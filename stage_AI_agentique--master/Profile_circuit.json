@@ -1,0 +1,2798 @@
+[
+  {
+    "circuit_id": "CIRCUIT_0000",
+    "indices": [
+      21,
+      20,
+      18,
+      16,
+      58,
+      38,
+      51
+    ],
+    "noms": [
+      "Latrines publiques",
+      "Thermes d'Antonin",
+      "Maison de Dionysos",
+      "Basiliques byzantines",
+      "Basilique chrétienne",
+      "Emplacement de la Chapelle Saint Louis",
+      "Cirque"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 122.9,
+    "score_moyen": 3.43,
+    "cout_par_categorie": {
+      "resident": 45.0,
+      "etudiant": 10.0,
+      "etranger": 60.0,
+      "enseignant": 22.5,
+      "retraite": 22.5,
+      "enfant": 10.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0001",
+    "indices": [
+      12,
+      14,
+      8,
+      45,
+      59,
+      50
+    ],
+    "noms": [
+      "Chapelle d'Asterius",
+      "Maison de la cachette",
+      "Nécropole punique (Parc des villas romaines)",
+      "Basilique Damous Karita",
+      "Triconque",
+      "Citernes de la Malaga"
+    ],
+    "nb_monuments": 6,
+    "duree_totale": 102.6,
+    "score_moyen": 3.5,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0002",
+    "indices": [
+      6,
+      2,
+      37,
+      49
+    ],
+    "noms": [
+      "Maison de la Rotonde",
+      "Monastere de Bigua (maison de Tellus)",
+      "Tombeau punique (Ariche)",
+      "Musée Paléochrétien Basilique de Cartagena"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 56.8,
+    "score_moyen": 4.25,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0003",
+    "indices": [
+      51,
+      59,
+      4,
+      6,
+      21
+    ],
+    "noms": [
+      "Cirque",
+      "Triconque",
+      "Maison de la Basilique",
+      "Maison de la Rotonde",
+      "Latrines publiques"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 42.6,
+    "score_moyen": 3.0,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0004",
+    "indices": [
+      15,
+      12,
+      1,
+      52,
+      39
+    ],
+    "noms": [
+      "Tombe de la Nécropole punique",
+      "Chapelle d'Asterius",
+      "Parc des villas romaines",
+      "Édifice à colonnes (Jockey club de Carthage)",
+      "Emplacement probable de la curie"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 76.6,
+    "score_moyen": 3.2,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0005",
+    "indices": [
+      47,
+      13,
+      22
+    ],
+    "noms": [
+      "Basilique Maiorum",
+      "Four punique",
+      "Quartier Magon"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 42.1,
+    "score_moyen": 3.67,
+    "cout_par_categorie": {
+      "resident": 18.0,
+      "etudiant": 4.0,
+      "etranger": 24.0,
+      "enseignant": 9.0,
+      "retraite": 9.0,
+      "enfant": 4.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0006",
+    "indices": [
+      9,
+      1,
+      36,
+      37
+    ],
+    "noms": [
+      "Nymphée",
+      "Parc des villas romaines",
+      "Musée national de Carthage",
+      "Tombeau punique (Ariche)"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 71.0,
+    "score_moyen": 3.75,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0007",
+    "indices": [
+      0,
+      52,
+      37
+    ],
+    "noms": [
+      "Theatre",
+      "Édifice à colonnes (Jockey club de Carthage)",
+      "Tombeau punique (Ariche)"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 35.8,
+    "score_moyen": 4.0,
+    "cout_par_categorie": {
+      "resident": 18.0,
+      "etudiant": 4.0,
+      "etranger": 24.0,
+      "enseignant": 9.0,
+      "retraite": 9.0,
+      "enfant": 4.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0008",
+    "indices": [
+      51,
+      29,
+      53,
+      18,
+      5,
+      55,
+      48
+    ],
+    "noms": [
+      "Cirque",
+      "La colline de Byrsa",
+      "Maison de la chasse aux sangliers",
+      "Maison de Dionysos",
+      "Maison de la Volière",
+      "Mosquée Imam Malek Ibn Anas",
+      "Basilique Saint Cyprien"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 148.9,
+    "score_moyen": 4.0,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0009",
+    "indices": [
+      12,
+      18,
+      58,
+      30,
+      26
+    ],
+    "noms": [
+      "Chapelle d'Asterius",
+      "Maison de Dionysos",
+      "Basilique chrétienne",
+      "Bibliothèque Tabularium",
+      "Port marchand"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 63.0,
+    "score_moyen": 3.0,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0010",
+    "indices": [
+      42,
+      18,
+      3,
+      53,
+      34,
+      32,
+      23
+    ],
+    "noms": [
+      "Beit El Hikma",
+      "Maison de Dionysos",
+      "Maison du Cryptoportique",
+      "Maison de la chasse aux sangliers",
+      "Absides Beule en contrebas",
+      "Grand Temple d'Esculape (Eshmoun)",
+      "Tophet"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 88.4,
+    "score_moyen": 3.43,
+    "cout_par_categorie": {
+      "resident": 45.0,
+      "etudiant": 10.0,
+      "etranger": 60.0,
+      "enseignant": 22.5,
+      "retraite": 22.5,
+      "enfant": 10.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0011",
+    "indices": [
+      42,
+      34,
+      52
+    ],
+    "noms": [
+      "Beit El Hikma",
+      "Absides Beule en contrebas",
+      "Édifice à colonnes (Jockey club de Carthage)"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 41.3,
+    "score_moyen": 3.33,
+    "cout_par_categorie": {
+      "resident": 9.0,
+      "etudiant": 2.0,
+      "etranger": 12.0,
+      "enseignant": 4.5,
+      "retraite": 4.5,
+      "enfant": 2.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0012",
+    "indices": [
+      27,
+      0,
+      8
+    ],
+    "noms": [
+      "Îlot de l'Amirauté",
+      "Theatre",
+      "Nécropole punique (Parc des villas romaines)"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 51.8,
+    "score_moyen": 4.0,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0013",
+    "indices": [
+      8,
+      2,
+      18,
+      19,
+      12,
+      22,
+      43
+    ],
+    "noms": [
+      "Nécropole punique (Parc des villas romaines)",
+      "Monastere de Bigua (maison de Tellus)",
+      "Maison de Dionysos",
+      "Nécropole punique (Parc des thermes d'Antonin)",
+      "Chapelle d'Asterius",
+      "Quartier Magon",
+      "Musée Océanographique (Dar El Hout)"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 147.3,
+    "score_moyen": 3.86,
+    "cout_par_categorie": {
+      "resident": 59.0,
+      "etudiant": 17.0,
+      "etranger": 77.0,
+      "enseignant": 32.0,
+      "retraite": 32.0,
+      "enfant": 17.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0014",
+    "indices": [
+      20,
+      4,
+      46,
+      56,
+      38,
+      27,
+      25
+    ],
+    "noms": [
+      "Thermes d'Antonin",
+      "Maison de la Basilique",
+      "La Rotonde de Damous El Karita",
+      "Parc de Monument circulaire",
+      "Emplacement de la Chapelle Saint Louis",
+      "Îlot de l'Amirauté",
+      "Port militaire"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 163.3,
+    "score_moyen": 4.0,
+    "cout_par_categorie": {
+      "resident": 54.0,
+      "etudiant": 12.0,
+      "etranger": 72.0,
+      "enseignant": 27.0,
+      "retraite": 27.0,
+      "enfant": 12.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0015",
+    "indices": [
+      35,
+      59,
+      5,
+      6
+    ],
+    "noms": [
+      "Tombeaux puniques",
+      "Triconque",
+      "Maison de la Volière",
+      "Maison de la Rotonde"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 36.3,
+    "score_moyen": 3.0,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0016",
+    "indices": [
+      44,
+      29,
+      39,
+      32,
+      0,
+      5,
+      20
+    ],
+    "noms": [
+      "Amphithéâtre de Carthage",
+      "La colline de Byrsa",
+      "Emplacement probable de la curie",
+      "Grand Temple d'Esculape (Eshmoun)",
+      "Theatre",
+      "Maison de la Volière",
+      "Thermes d'Antonin"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 207.7,
+    "score_moyen": 4.14,
+    "cout_par_categorie": {
+      "resident": 63.0,
+      "etudiant": 14.0,
+      "etranger": 84.0,
+      "enseignant": 31.5,
+      "retraite": 31.5,
+      "enfant": 14.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0017",
+    "indices": [
+      23,
+      24,
+      33,
+      36,
+      58,
+      2,
+      20
+    ],
+    "noms": [
+      "Tophet",
+      "Ports puniques",
+      "Emplacement probable de la Basilique judiciaire",
+      "Musée national de Carthage",
+      "Basilique chrétienne",
+      "Monastere de Bigua (maison de Tellus)",
+      "Thermes d'Antonin"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 158.4,
+    "score_moyen": 4.14,
+    "cout_par_categorie": {
+      "resident": 54.0,
+      "etudiant": 12.0,
+      "etranger": 72.0,
+      "enseignant": 27.0,
+      "retraite": 27.0,
+      "enfant": 12.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0018",
+    "indices": [
+      50,
+      52,
+      57,
+      8,
+      48
+    ],
+    "noms": [
+      "Citernes de la Malaga",
+      "Édifice à colonnes (Jockey club de Carthage)",
+      "Monument circulaire (Martyrium)",
+      "Nécropole punique (Parc des villas romaines)",
+      "Basilique Saint Cyprien"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 82.5,
+    "score_moyen": 3.8,
+    "cout_par_categorie": {
+      "resident": 9.0,
+      "etudiant": 2.0,
+      "etranger": 12.0,
+      "enseignant": 4.5,
+      "retraite": 4.5,
+      "enfant": 2.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0019",
+    "indices": [
+      29,
+      38,
+      34,
+      0,
+      5,
+      20,
+      48
+    ],
+    "noms": [
+      "La colline de Byrsa",
+      "Emplacement de la Chapelle Saint Louis",
+      "Absides Beule en contrebas",
+      "Theatre",
+      "Maison de la Volière",
+      "Thermes d'Antonin",
+      "Basilique Saint Cyprien"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 208.1,
+    "score_moyen": 4.14,
+    "cout_par_categorie": {
+      "resident": 54.0,
+      "etudiant": 12.0,
+      "etranger": 72.0,
+      "enseignant": 27.0,
+      "retraite": 27.0,
+      "enfant": 12.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0020",
+    "indices": [
+      25,
+      21,
+      6,
+      5,
+      57
+    ],
+    "noms": [
+      "Port militaire",
+      "Latrines publiques",
+      "Maison de la Rotonde",
+      "Maison de la Volière",
+      "Monument circulaire (Martyrium)"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 57.5,
+    "score_moyen": 3.6,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0021",
+    "indices": [
+      29,
+      53,
+      42,
+      22,
+      21,
+      9,
+      48
+    ],
+    "noms": [
+      "La colline de Byrsa",
+      "Maison de la chasse aux sangliers",
+      "Beit El Hikma",
+      "Quartier Magon",
+      "Latrines publiques",
+      "Nymphée",
+      "Basilique Saint Cyprien"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 153.5,
+    "score_moyen": 4.0,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0022",
+    "indices": [
+      38,
+      40,
+      49
+    ],
+    "noms": [
+      "Emplacement de la Chapelle Saint Louis",
+      "Quartier Punique (Quartier Hannibal)",
+      "Musée Paléochrétien Basilique de Cartagena"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 65.7,
+    "score_moyen": 4.0,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0023",
+    "indices": [
+      29,
+      57,
+      8,
+      47
+    ],
+    "noms": [
+      "La colline de Byrsa",
+      "Monument circulaire (Martyrium)",
+      "Nécropole punique (Parc des villas romaines)",
+      "Basilique Maiorum"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 117.5,
+    "score_moyen": 3.5,
+    "cout_par_categorie": {
+      "resident": 18.0,
+      "etudiant": 4.0,
+      "etranger": 24.0,
+      "enseignant": 9.0,
+      "retraite": 9.0,
+      "enfant": 4.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0024",
+    "indices": [
+      49,
+      40,
+      30,
+      36,
+      53,
+      17,
+      46
+    ],
+    "noms": [
+      "Musée Paléochrétien Basilique de Cartagena",
+      "Quartier Punique (Quartier Hannibal)",
+      "Bibliothèque Tabularium",
+      "Musée national de Carthage",
+      "Maison de la chasse aux sangliers",
+      "Scholla",
+      "La Rotonde de Damous El Karita"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 132.7,
+    "score_moyen": 3.71,
+    "cout_par_categorie": {
+      "resident": 45.0,
+      "etudiant": 10.0,
+      "etranger": 60.0,
+      "enseignant": 22.5,
+      "retraite": 22.5,
+      "enfant": 10.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0025",
+    "indices": [
+      50,
+      33,
+      34,
+      2
+    ],
+    "noms": [
+      "Citernes de la Malaga",
+      "Emplacement probable de la Basilique judiciaire",
+      "Absides Beule en contrebas",
+      "Monastere de Bigua (maison de Tellus)"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 52.0,
+    "score_moyen": 3.75,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0026",
+    "indices": [
+      7,
+      6,
+      3,
+      17,
+      24,
+      40,
+      44
+    ],
+    "noms": [
+      "Maison des Lions",
+      "Maison de la Rotonde",
+      "Maison du Cryptoportique",
+      "Scholla",
+      "Ports puniques",
+      "Quartier Punique (Quartier Hannibal)",
+      "Amphithéâtre de Carthage"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 109.5,
+    "score_moyen": 3.71,
+    "cout_par_categorie": {
+      "resident": 63.0,
+      "etudiant": 14.0,
+      "etranger": 84.0,
+      "enseignant": 31.5,
+      "retraite": 31.5,
+      "enfant": 14.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0027",
+    "indices": [
+      5,
+      18,
+      42,
+      43
+    ],
+    "noms": [
+      "Maison de la Volière",
+      "Maison de Dionysos",
+      "Beit El Hikma",
+      "Musée Océanographique (Dar El Hout)"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 97.2,
+    "score_moyen": 4.25,
+    "cout_par_categorie": {
+      "resident": 23.0,
+      "etudiant": 9.0,
+      "etranger": 29.0,
+      "enseignant": 14.0,
+      "retraite": 14.0,
+      "enfant": 9.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0028",
+    "indices": [
+      40,
+      53,
+      7
+    ],
+    "noms": [
+      "Quartier Punique (Quartier Hannibal)",
+      "Maison de la chasse aux sangliers",
+      "Maison des Lions"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 36.2,
+    "score_moyen": 2.67,
+    "cout_par_categorie": {
+      "resident": 18.0,
+      "etudiant": 4.0,
+      "etranger": 24.0,
+      "enseignant": 9.0,
+      "retraite": 9.0,
+      "enfant": 4.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0029",
+    "indices": [
+      20,
+      11,
+      42,
+      26
+    ],
+    "noms": [
+      "Thermes d'Antonin",
+      "Parc des thermes d'Antonin",
+      "Beit El Hikma",
+      "Port marchand"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 151.9,
+    "score_moyen": 4.75,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0030",
+    "indices": [
+      30,
+      12,
+      17,
+      47
+    ],
+    "noms": [
+      "Bibliothèque Tabularium",
+      "Chapelle d'Asterius",
+      "Scholla",
+      "Basilique Maiorum"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 52.8,
+    "score_moyen": 3.0,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0031",
+    "indices": [
+      7,
+      34,
+      25,
+      26
+    ],
+    "noms": [
+      "Maison des Lions",
+      "Absides Beule en contrebas",
+      "Port militaire",
+      "Port marchand"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 52.4,
+    "score_moyen": 3.0,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0032",
+    "indices": [
+      48,
+      6,
+      20,
+      11,
+      17,
+      52,
+      23
+    ],
+    "noms": [
+      "Basilique Saint Cyprien",
+      "Maison de la Rotonde",
+      "Thermes d'Antonin",
+      "Parc des thermes d'Antonin",
+      "Scholla",
+      "Édifice à colonnes (Jockey club de Carthage)",
+      "Tophet"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 194.6,
+    "score_moyen": 4.14,
+    "cout_par_categorie": {
+      "resident": 45.0,
+      "etudiant": 10.0,
+      "etranger": 60.0,
+      "enseignant": 22.5,
+      "retraite": 22.5,
+      "enfant": 10.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0033",
+    "indices": [
+      19,
+      11,
+      13,
+      56,
+      52
+    ],
+    "noms": [
+      "Nécropole punique (Parc des thermes d'Antonin)",
+      "Parc des thermes d'Antonin",
+      "Four punique",
+      "Parc de Monument circulaire",
+      "Édifice à colonnes (Jockey club de Carthage)"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 116.2,
+    "score_moyen": 3.8,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0034",
+    "indices": [
+      24,
+      32,
+      36,
+      50,
+      47
+    ],
+    "noms": [
+      "Ports puniques",
+      "Grand Temple d'Esculape (Eshmoun)",
+      "Musée national de Carthage",
+      "Citernes de la Malaga",
+      "Basilique Maiorum"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 94.2,
+    "score_moyen": 4.0,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0035",
+    "indices": [
+      49,
+      39,
+      45
+    ],
+    "noms": [
+      "Musée Paléochrétien Basilique de Cartagena",
+      "Emplacement probable de la curie",
+      "Basilique Damous Karita"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 67.1,
+    "score_moyen": 4.0,
+    "cout_par_categorie": {
+      "resident": 18.0,
+      "etudiant": 4.0,
+      "etranger": 24.0,
+      "enseignant": 9.0,
+      "retraite": 9.0,
+      "enfant": 4.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0036",
+    "indices": [
+      51,
+      53,
+      5,
+      6,
+      22
+    ],
+    "noms": [
+      "Cirque",
+      "Maison de la chasse aux sangliers",
+      "Maison de la Volière",
+      "Maison de la Rotonde",
+      "Quartier Magon"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 57.9,
+    "score_moyen": 3.6,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0037",
+    "indices": [
+      23,
+      34,
+      38,
+      50,
+      57,
+      45
+    ],
+    "noms": [
+      "Tophet",
+      "Absides Beule en contrebas",
+      "Emplacement de la Chapelle Saint Louis",
+      "Citernes de la Malaga",
+      "Monument circulaire (Martyrium)",
+      "Basilique Damous Karita"
+    ],
+    "nb_monuments": 6,
+    "duree_totale": 114.2,
+    "score_moyen": 3.83,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0038",
+    "indices": [
+      28,
+      32,
+      36,
+      58,
+      4,
+      17,
+      20
+    ],
+    "noms": [
+      "Temple (emplacement)",
+      "Grand Temple d'Esculape (Eshmoun)",
+      "Musée national de Carthage",
+      "Basilique chrétienne",
+      "Maison de la Basilique",
+      "Scholla",
+      "Thermes d'Antonin"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 137.9,
+    "score_moyen": 3.0,
+    "cout_par_categorie": {
+      "resident": 45.0,
+      "etudiant": 10.0,
+      "etranger": 60.0,
+      "enseignant": 22.5,
+      "retraite": 22.5,
+      "enfant": 10.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0039",
+    "indices": [
+      58,
+      18,
+      25
+    ],
+    "noms": [
+      "Basilique chrétienne",
+      "Maison de Dionysos",
+      "Port militaire"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 32.3,
+    "score_moyen": 3.0,
+    "cout_par_categorie": {
+      "resident": 18.0,
+      "etudiant": 4.0,
+      "etranger": 24.0,
+      "enseignant": 9.0,
+      "retraite": 9.0,
+      "enfant": 4.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0040",
+    "indices": [
+      55,
+      29,
+      25,
+      24,
+      43
+    ],
+    "noms": [
+      "Mosquée Imam Malek Ibn Anas",
+      "La colline de Byrsa",
+      "Port militaire",
+      "Ports puniques",
+      "Musée Océanographique (Dar El Hout)"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 192.5,
+    "score_moyen": 4.8,
+    "cout_par_categorie": {
+      "resident": 32.0,
+      "etudiant": 11.0,
+      "etranger": 41.0,
+      "enseignant": 18.5,
+      "retraite": 18.5,
+      "enfant": 11.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0041",
+    "indices": [
+      42,
+      3,
+      54,
+      46,
+      58,
+      50
+    ],
+    "noms": [
+      "Beit El Hikma",
+      "Maison du Cryptoportique",
+      "Odéon",
+      "La Rotonde de Damous El Karita",
+      "Basilique chrétienne",
+      "Citernes de la Malaga"
+    ],
+    "nb_monuments": 6,
+    "duree_totale": 82.7,
+    "score_moyen": 4.33,
+    "cout_par_categorie": {
+      "resident": 18.0,
+      "etudiant": 4.0,
+      "etranger": 24.0,
+      "enseignant": 9.0,
+      "retraite": 9.0,
+      "enfant": 4.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0042",
+    "indices": [
+      19,
+      11,
+      16,
+      7,
+      9,
+      52,
+      26
+    ],
+    "noms": [
+      "Nécropole punique (Parc des thermes d'Antonin)",
+      "Parc des thermes d'Antonin",
+      "Basiliques byzantines",
+      "Maison des Lions",
+      "Nymphée",
+      "Édifice à colonnes (Jockey club de Carthage)",
+      "Port marchand"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 128.4,
+    "score_moyen": 3.14,
+    "cout_par_categorie": {
+      "resident": 54.0,
+      "etudiant": 12.0,
+      "etranger": 72.0,
+      "enseignant": 27.0,
+      "retraite": 27.0,
+      "enfant": 12.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0043",
+    "indices": [
+      33,
+      16,
+      17
+    ],
+    "noms": [
+      "Emplacement probable de la Basilique judiciaire",
+      "Basiliques byzantines",
+      "Scholla"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 30.9,
+    "score_moyen": 3.0,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0044",
+    "indices": [
+      1,
+      18,
+      17,
+      49,
+      27
+    ],
+    "noms": [
+      "Parc des villas romaines",
+      "Maison de Dionysos",
+      "Scholla",
+      "Musée Paléochrétien Basilique de Cartagena",
+      "Îlot de l'Amirauté"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 97.0,
+    "score_moyen": 4.0,
+    "cout_par_categorie": {
+      "resident": 45.0,
+      "etudiant": 10.0,
+      "etranger": 60.0,
+      "enseignant": 22.5,
+      "retraite": 22.5,
+      "enfant": 10.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0045",
+    "indices": [
+      25,
+      28,
+      37,
+      33,
+      42
+    ],
+    "noms": [
+      "Port militaire",
+      "Temple (emplacement)",
+      "Tombeau punique (Ariche)",
+      "Emplacement probable de la Basilique judiciaire",
+      "Beit El Hikma"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 57.2,
+    "score_moyen": 3.6,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0046",
+    "indices": [
+      57,
+      3,
+      11,
+      49
+    ],
+    "noms": [
+      "Monument circulaire (Martyrium)",
+      "Maison du Cryptoportique",
+      "Parc des thermes d'Antonin",
+      "Musée Paléochrétien Basilique de Cartagena"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 112.0,
+    "score_moyen": 4.25,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0047",
+    "indices": [
+      26,
+      27,
+      9
+    ],
+    "noms": [
+      "Port marchand",
+      "Îlot de l'Amirauté",
+      "Nymphée"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 36.9,
+    "score_moyen": 3.33,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0048",
+    "indices": [
+      48,
+      45,
+      3,
+      57,
+      39,
+      50
+    ],
+    "noms": [
+      "Basilique Saint Cyprien",
+      "Basilique Damous Karita",
+      "Maison du Cryptoportique",
+      "Monument circulaire (Martyrium)",
+      "Emplacement probable de la curie",
+      "Citernes de la Malaga"
+    ],
+    "nb_monuments": 6,
+    "duree_totale": 93.3,
+    "score_moyen": 4.0,
+    "cout_par_categorie": {
+      "resident": 18.0,
+      "etudiant": 4.0,
+      "etranger": 24.0,
+      "enseignant": 9.0,
+      "retraite": 9.0,
+      "enfant": 4.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0049",
+    "indices": [
+      42,
+      15,
+      58,
+      36,
+      51
+    ],
+    "noms": [
+      "Beit El Hikma",
+      "Tombe de la Nécropole punique",
+      "Basilique chrétienne",
+      "Musée national de Carthage",
+      "Cirque"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 68.0,
+    "score_moyen": 3.6,
+    "cout_par_categorie": {
+      "resident": 18.0,
+      "etudiant": 4.0,
+      "etranger": 24.0,
+      "enseignant": 9.0,
+      "retraite": 9.0,
+      "enfant": 4.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0050",
+    "indices": [
+      27,
+      35,
+      34,
+      36,
+      21,
+      19
+    ],
+    "noms": [
+      "Îlot de l'Amirauté",
+      "Tombeaux puniques",
+      "Absides Beule en contrebas",
+      "Musée national de Carthage",
+      "Latrines publiques",
+      "Nécropole punique (Parc des thermes d'Antonin)"
+    ],
+    "nb_monuments": 6,
+    "duree_totale": 87.6,
+    "score_moyen": 3.33,
+    "cout_par_categorie": {
+      "resident": 54.0,
+      "etudiant": 12.0,
+      "etranger": 72.0,
+      "enseignant": 27.0,
+      "retraite": 27.0,
+      "enfant": 12.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0051",
+    "indices": [
+      1,
+      22,
+      49
+    ],
+    "noms": [
+      "Parc des villas romaines",
+      "Quartier Magon",
+      "Musée Paléochrétien Basilique de Cartagena"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 81.5,
+    "score_moyen": 5.0,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0052",
+    "indices": [
+      23,
+      31,
+      36,
+      15,
+      1,
+      3,
+      48
+    ],
+    "noms": [
+      "Tophet",
+      "Temple prostyle",
+      "Musée national de Carthage",
+      "Tombe de la Nécropole punique",
+      "Parc des villas romaines",
+      "Maison du Cryptoportique",
+      "Basilique Saint Cyprien"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 134.2,
+    "score_moyen": 4.14,
+    "cout_par_categorie": {
+      "resident": 54.0,
+      "etudiant": 12.0,
+      "etranger": 72.0,
+      "enseignant": 27.0,
+      "retraite": 27.0,
+      "enfant": 12.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0053",
+    "indices": [
+      47,
+      2,
+      50
+    ],
+    "noms": [
+      "Basilique Maiorum",
+      "Monastere de Bigua (maison de Tellus)",
+      "Citernes de la Malaga"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 42.9,
+    "score_moyen": 4.33,
+    "cout_par_categorie": {
+      "resident": 9.0,
+      "etudiant": 2.0,
+      "etranger": 12.0,
+      "enseignant": 4.5,
+      "retraite": 4.5,
+      "enfant": 2.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0054",
+    "indices": [
+      7,
+      9,
+      1,
+      34,
+      24
+    ],
+    "noms": [
+      "Maison des Lions",
+      "Nymphée",
+      "Parc des villas romaines",
+      "Absides Beule en contrebas",
+      "Ports puniques"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 77.3,
+    "score_moyen": 3.2,
+    "cout_par_categorie": {
+      "resident": 45.0,
+      "etudiant": 10.0,
+      "etranger": 60.0,
+      "enseignant": 22.5,
+      "retraite": 22.5,
+      "enfant": 10.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0055",
+    "indices": [
+      1,
+      2,
+      45,
+      10,
+      44,
+      39,
+      26
+    ],
+    "noms": [
+      "Parc des villas romaines",
+      "Monastere de Bigua (maison de Tellus)",
+      "Basilique Damous Karita",
+      "Muraille de Théodose",
+      "Amphithéâtre de Carthage",
+      "Emplacement probable de la curie",
+      "Port marchand"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 130.0,
+    "score_moyen": 4.0,
+    "cout_par_categorie": {
+      "resident": 54.0,
+      "etudiant": 12.0,
+      "etranger": 72.0,
+      "enseignant": 27.0,
+      "retraite": 27.0,
+      "enfant": 12.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0056",
+    "indices": [
+      54,
+      19,
+      43
+    ],
+    "noms": [
+      "Odéon",
+      "Nécropole punique (Parc des thermes d'Antonin)",
+      "Musée Océanographique (Dar El Hout)"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 82.4,
+    "score_moyen": 4.33,
+    "cout_par_categorie": {
+      "resident": 23.0,
+      "etudiant": 9.0,
+      "etranger": 29.0,
+      "enseignant": 14.0,
+      "retraite": 14.0,
+      "enfant": 9.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0057",
+    "indices": [
+      7,
+      6,
+      9,
+      31
+    ],
+    "noms": [
+      "Maison des Lions",
+      "Maison de la Rotonde",
+      "Nymphée",
+      "Temple prostyle"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 41.3,
+    "score_moyen": 2.5,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0058",
+    "indices": [
+      26,
+      22,
+      33,
+      37,
+      57,
+      6
+    ],
+    "noms": [
+      "Port marchand",
+      "Quartier Magon",
+      "Emplacement probable de la Basilique judiciaire",
+      "Tombeau punique (Ariche)",
+      "Monument circulaire (Martyrium)",
+      "Maison de la Rotonde"
+    ],
+    "nb_monuments": 6,
+    "duree_totale": 73.4,
+    "score_moyen": 3.67,
+    "cout_par_categorie": {
+      "resident": 45.0,
+      "etudiant": 10.0,
+      "etranger": 60.0,
+      "enseignant": 22.5,
+      "retraite": 22.5,
+      "enfant": 10.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0059",
+    "indices": [
+      20,
+      19,
+      15,
+      6,
+      0,
+      39
+    ],
+    "noms": [
+      "Thermes d'Antonin",
+      "Nécropole punique (Parc des thermes d'Antonin)",
+      "Tombe de la Nécropole punique",
+      "Maison de la Rotonde",
+      "Theatre",
+      "Emplacement probable de la curie"
+    ],
+    "nb_monuments": 6,
+    "duree_totale": 111.6,
+    "score_moyen": 3.5,
+    "cout_par_categorie": {
+      "resident": 54.0,
+      "etudiant": 12.0,
+      "etranger": 72.0,
+      "enseignant": 27.0,
+      "retraite": 27.0,
+      "enfant": 12.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0060",
+    "indices": [
+      26,
+      27,
+      53,
+      6,
+      10
+    ],
+    "noms": [
+      "Port marchand",
+      "Îlot de l'Amirauté",
+      "Maison de la chasse aux sangliers",
+      "Maison de la Rotonde",
+      "Muraille de Théodose"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 57.6,
+    "score_moyen": 3.0,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0061",
+    "indices": [
+      13,
+      9,
+      8,
+      57,
+      29,
+      43
+    ],
+    "noms": [
+      "Four punique",
+      "Nymphée",
+      "Nécropole punique (Parc des villas romaines)",
+      "Monument circulaire (Martyrium)",
+      "La colline de Byrsa",
+      "Musée Océanographique (Dar El Hout)"
+    ],
+    "nb_monuments": 6,
+    "duree_totale": 182.8,
+    "score_moyen": 3.5,
+    "cout_par_categorie": {
+      "resident": 41.0,
+      "etudiant": 13.0,
+      "etranger": 53.0,
+      "enseignant": 23.0,
+      "retraite": 23.0,
+      "enfant": 13.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0062",
+    "indices": [
+      46,
+      7,
+      16,
+      37,
+      31
+    ],
+    "noms": [
+      "La Rotonde de Damous El Karita",
+      "Maison des Lions",
+      "Basiliques byzantines",
+      "Tombeau punique (Ariche)",
+      "Temple prostyle"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 62.0,
+    "score_moyen": 3.4,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0063",
+    "indices": [
+      20,
+      15,
+      7,
+      57,
+      58,
+      35,
+      49
+    ],
+    "noms": [
+      "Thermes d'Antonin",
+      "Tombe de la Nécropole punique",
+      "Maison des Lions",
+      "Monument circulaire (Martyrium)",
+      "Basilique chrétienne",
+      "Tombeaux puniques",
+      "Musée Paléochrétien Basilique de Cartagena"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 137.6,
+    "score_moyen": 3.29,
+    "cout_par_categorie": {
+      "resident": 45.0,
+      "etudiant": 10.0,
+      "etranger": 60.0,
+      "enseignant": 22.5,
+      "retraite": 22.5,
+      "enfant": 10.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0064",
+    "indices": [
+      43,
+      51,
+      59,
+      1
+    ],
+    "noms": [
+      "Musée Océanographique (Dar El Hout)",
+      "Cirque",
+      "Triconque",
+      "Parc des villas romaines"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 103.6,
+    "score_moyen": 4.0,
+    "cout_par_categorie": {
+      "resident": 14.0,
+      "etudiant": 7.0,
+      "etranger": 17.0,
+      "enseignant": 9.5,
+      "retraite": 9.5,
+      "enfant": 7.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0065",
+    "indices": [
+      47,
+      20,
+      58,
+      53,
+      40
+    ],
+    "noms": [
+      "Basilique Maiorum",
+      "Thermes d'Antonin",
+      "Basilique chrétienne",
+      "Maison de la chasse aux sangliers",
+      "Quartier Punique (Quartier Hannibal)"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 103.5,
+    "score_moyen": 3.2,
+    "cout_par_categorie": {
+      "resident": 18.0,
+      "etudiant": 4.0,
+      "etranger": 24.0,
+      "enseignant": 9.0,
+      "retraite": 9.0,
+      "enfant": 4.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0066",
+    "indices": [
+      11,
+      7,
+      45,
+      59,
+      39,
+      37
+    ],
+    "noms": [
+      "Parc des thermes d'Antonin",
+      "Maison des Lions",
+      "Basilique Damous Karita",
+      "Triconque",
+      "Emplacement probable de la curie",
+      "Tombeau punique (Ariche)"
+    ],
+    "nb_monuments": 6,
+    "duree_totale": 117.5,
+    "score_moyen": 3.33,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0067",
+    "indices": [
+      5,
+      25,
+      23
+    ],
+    "noms": [
+      "Maison de la Volière",
+      "Port militaire",
+      "Tophet"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 47.4,
+    "score_moyen": 4.33,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0068",
+    "indices": [
+      7,
+      18,
+      11
+    ],
+    "noms": [
+      "Maison des Lions",
+      "Maison de Dionysos",
+      "Parc des thermes d'Antonin"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 80.6,
+    "score_moyen": 3.33,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0069",
+    "indices": [
+      8,
+      59,
+      32
+    ],
+    "noms": [
+      "Nécropole punique (Parc des villas romaines)",
+      "Triconque",
+      "Grand Temple d'Esculape (Eshmoun)"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 36.1,
+    "score_moyen": 2.67,
+    "cout_par_categorie": {
+      "resident": 18.0,
+      "etudiant": 4.0,
+      "etranger": 24.0,
+      "enseignant": 9.0,
+      "retraite": 9.0,
+      "enfant": 4.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0070",
+    "indices": [
+      16,
+      10,
+      57,
+      30,
+      49
+    ],
+    "noms": [
+      "Basiliques byzantines",
+      "Muraille de Théodose",
+      "Monument circulaire (Martyrium)",
+      "Bibliothèque Tabularium",
+      "Musée Paléochrétien Basilique de Cartagena"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 72.5,
+    "score_moyen": 3.2,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0071",
+    "indices": [
+      58,
+      6,
+      12,
+      21
+    ],
+    "noms": [
+      "Basilique chrétienne",
+      "Maison de la Rotonde",
+      "Chapelle d'Asterius",
+      "Latrines publiques"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 41.1,
+    "score_moyen": 3.0,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0072",
+    "indices": [
+      10,
+      8,
+      13,
+      36,
+      50
+    ],
+    "noms": [
+      "Muraille de Théodose",
+      "Nécropole punique (Parc des villas romaines)",
+      "Four punique",
+      "Musée national de Carthage",
+      "Citernes de la Malaga"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 87.6,
+    "score_moyen": 3.4,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0073",
+    "indices": [
+      7,
+      16,
+      32,
+      26,
+      23
+    ],
+    "noms": [
+      "Maison des Lions",
+      "Basiliques byzantines",
+      "Grand Temple d'Esculape (Eshmoun)",
+      "Port marchand",
+      "Tophet"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 68.0,
+    "score_moyen": 3.4,
+    "cout_par_categorie": {
+      "resident": 45.0,
+      "etudiant": 10.0,
+      "etranger": 60.0,
+      "enseignant": 22.5,
+      "retraite": 22.5,
+      "enfant": 10.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0074",
+    "indices": [
+      51,
+      40,
+      17,
+      4
+    ],
+    "noms": [
+      "Cirque",
+      "Quartier Punique (Quartier Hannibal)",
+      "Scholla",
+      "Maison de la Basilique"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 42.4,
+    "score_moyen": 3.25,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0075",
+    "indices": [
+      57,
+      29,
+      31,
+      32,
+      40,
+      28
+    ],
+    "noms": [
+      "Monument circulaire (Martyrium)",
+      "La colline de Byrsa",
+      "Temple prostyle",
+      "Grand Temple d'Esculape (Eshmoun)",
+      "Quartier Punique (Quartier Hannibal)",
+      "Temple (emplacement)"
+    ],
+    "nb_monuments": 6,
+    "duree_totale": 137.1,
+    "score_moyen": 3.33,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0076",
+    "indices": [
+      15,
+      1,
+      0,
+      37,
+      31
+    ],
+    "noms": [
+      "Tombe de la Nécropole punique",
+      "Parc des villas romaines",
+      "Theatre",
+      "Tombeau punique (Ariche)",
+      "Temple prostyle"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 76.4,
+    "score_moyen": 4.0,
+    "cout_par_categorie": {
+      "resident": 45.0,
+      "etudiant": 10.0,
+      "etranger": 60.0,
+      "enseignant": 22.5,
+      "retraite": 22.5,
+      "enfant": 10.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0077",
+    "indices": [
+      57,
+      19,
+      21,
+      42
+    ],
+    "noms": [
+      "Monument circulaire (Martyrium)",
+      "Nécropole punique (Parc des thermes d'Antonin)",
+      "Latrines publiques",
+      "Beit El Hikma"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 46.2,
+    "score_moyen": 3.75,
+    "cout_par_categorie": {
+      "resident": 18.0,
+      "etudiant": 4.0,
+      "etranger": 24.0,
+      "enseignant": 9.0,
+      "retraite": 9.0,
+      "enfant": 4.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0078",
+    "indices": [
+      47,
+      46,
+      0,
+      53,
+      29
+    ],
+    "noms": [
+      "Basilique Maiorum",
+      "La Rotonde de Damous El Karita",
+      "Theatre",
+      "Maison de la chasse aux sangliers",
+      "La colline de Byrsa"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 132.3,
+    "score_moyen": 4.0,
+    "cout_par_categorie": {
+      "resident": 18.0,
+      "etudiant": 4.0,
+      "etranger": 24.0,
+      "enseignant": 9.0,
+      "retraite": 9.0,
+      "enfant": 4.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0079",
+    "indices": [
+      10,
+      18,
+      38,
+      32,
+      40,
+      24,
+      43
+    ],
+    "noms": [
+      "Muraille de Théodose",
+      "Maison de Dionysos",
+      "Emplacement de la Chapelle Saint Louis",
+      "Grand Temple d'Esculape (Eshmoun)",
+      "Quartier Punique (Quartier Hannibal)",
+      "Ports puniques",
+      "Musée Océanographique (Dar El Hout)"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 143.1,
+    "score_moyen": 3.57,
+    "cout_par_categorie": {
+      "resident": 59.0,
+      "etudiant": 17.0,
+      "etranger": 77.0,
+      "enseignant": 32.0,
+      "retraite": 32.0,
+      "enfant": 17.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0080",
+    "indices": [
+      2,
+      14,
+      17
+    ],
+    "noms": [
+      "Monastere de Bigua (maison de Tellus)",
+      "Maison de la cachette",
+      "Scholla"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 30.3,
+    "score_moyen": 3.67,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0081",
+    "indices": [
+      45,
+      2,
+      25,
+      30,
+      44
+    ],
+    "noms": [
+      "Basilique Damous Karita",
+      "Monastere de Bigua (maison de Tellus)",
+      "Port militaire",
+      "Bibliothèque Tabularium",
+      "Amphithéâtre de Carthage"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 104.5,
+    "score_moyen": 4.4,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0082",
+    "indices": [
+      46,
+      57,
+      6,
+      42,
+      35,
+      26
+    ],
+    "noms": [
+      "La Rotonde de Damous El Karita",
+      "Monument circulaire (Martyrium)",
+      "Maison de la Rotonde",
+      "Beit El Hikma",
+      "Tombeaux puniques",
+      "Port marchand"
+    ],
+    "nb_monuments": 6,
+    "duree_totale": 84.0,
+    "score_moyen": 3.83,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0083",
+    "indices": [
+      25,
+      40,
+      34,
+      52,
+      55,
+      6,
+      7
+    ],
+    "noms": [
+      "Port militaire",
+      "Quartier Punique (Quartier Hannibal)",
+      "Absides Beule en contrebas",
+      "Édifice à colonnes (Jockey club de Carthage)",
+      "Mosquée Imam Malek Ibn Anas",
+      "Maison de la Rotonde",
+      "Maison des Lions"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 97.7,
+    "score_moyen": 3.29,
+    "cout_par_categorie": {
+      "resident": 45.0,
+      "etudiant": 10.0,
+      "etranger": 60.0,
+      "enseignant": 22.5,
+      "retraite": 22.5,
+      "enfant": 10.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0084",
+    "indices": [
+      7,
+      55,
+      38
+    ],
+    "noms": [
+      "Maison des Lions",
+      "Mosquée Imam Malek Ibn Anas",
+      "Emplacement de la Chapelle Saint Louis"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 51.4,
+    "score_moyen": 3.33,
+    "cout_par_categorie": {
+      "resident": 18.0,
+      "etudiant": 4.0,
+      "etranger": 24.0,
+      "enseignant": 9.0,
+      "retraite": 9.0,
+      "enfant": 4.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0085",
+    "indices": [
+      17,
+      42,
+      34
+    ],
+    "noms": [
+      "Scholla",
+      "Beit El Hikma",
+      "Absides Beule en contrebas"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 36.2,
+    "score_moyen": 3.33,
+    "cout_par_categorie": {
+      "resident": 18.0,
+      "etudiant": 4.0,
+      "etranger": 24.0,
+      "enseignant": 9.0,
+      "retraite": 9.0,
+      "enfant": 4.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0086",
+    "indices": [
+      21,
+      12,
+      4,
+      58,
+      52,
+      29,
+      50
+    ],
+    "noms": [
+      "Latrines publiques",
+      "Chapelle d'Asterius",
+      "Maison de la Basilique",
+      "Basilique chrétienne",
+      "Édifice à colonnes (Jockey club de Carthage)",
+      "La colline de Byrsa",
+      "Citernes de la Malaga"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 152.7,
+    "score_moyen": 3.43,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0087",
+    "indices": [
+      41,
+      36,
+      20,
+      48
+    ],
+    "noms": [
+      "Cathédrale Saint Louis",
+      "Musée national de Carthage",
+      "Thermes d'Antonin",
+      "Basilique Saint Cyprien"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 122.5,
+    "score_moyen": 4.5,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0088",
+    "indices": [
+      12,
+      0,
+      39,
+      30,
+      49,
+      28
+    ],
+    "noms": [
+      "Chapelle d'Asterius",
+      "Theatre",
+      "Emplacement probable de la curie",
+      "Bibliothèque Tabularium",
+      "Musée Paléochrétien Basilique de Cartagena",
+      "Temple (emplacement)"
+    ],
+    "nb_monuments": 6,
+    "duree_totale": 92.4,
+    "score_moyen": 3.33,
+    "cout_par_categorie": {
+      "resident": 45.0,
+      "etudiant": 10.0,
+      "etranger": 60.0,
+      "enseignant": 22.5,
+      "retraite": 22.5,
+      "enfant": 10.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0089",
+    "indices": [
+      43,
+      35,
+      50,
+      19
+    ],
+    "noms": [
+      "Musée Océanographique (Dar El Hout)",
+      "Tombeaux puniques",
+      "Citernes de la Malaga",
+      "Nécropole punique (Parc des thermes d'Antonin)"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 103.9,
+    "score_moyen": 4.0,
+    "cout_par_categorie": {
+      "resident": 23.0,
+      "etudiant": 9.0,
+      "etranger": 29.0,
+      "enseignant": 14.0,
+      "retraite": 14.0,
+      "enfant": 9.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0090",
+    "indices": [
+      6,
+      57,
+      32,
+      26
+    ],
+    "noms": [
+      "Maison de la Rotonde",
+      "Monument circulaire (Martyrium)",
+      "Grand Temple d'Esculape (Eshmoun)",
+      "Port marchand"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 47.5,
+    "score_moyen": 3.25,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0091",
+    "indices": [
+      47,
+      48,
+      18,
+      25
+    ],
+    "noms": [
+      "Basilique Maiorum",
+      "Basilique Saint Cyprien",
+      "Maison de Dionysos",
+      "Port militaire"
+    ],
+    "nb_monuments": 4,
+    "duree_totale": 53.5,
+    "score_moyen": 3.75,
+    "cout_par_categorie": {
+      "resident": 18.0,
+      "etudiant": 4.0,
+      "etranger": 24.0,
+      "enseignant": 9.0,
+      "retraite": 9.0,
+      "enfant": 4.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0092",
+    "indices": [
+      16,
+      5,
+      59,
+      39,
+      31
+    ],
+    "noms": [
+      "Basiliques byzantines",
+      "Maison de la Volière",
+      "Triconque",
+      "Emplacement probable de la curie",
+      "Temple prostyle"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 46.7,
+    "score_moyen": 2.8,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0093",
+    "indices": [
+      26,
+      43,
+      34,
+      0,
+      3
+    ],
+    "noms": [
+      "Port marchand",
+      "Musée Océanographique (Dar El Hout)",
+      "Absides Beule en contrebas",
+      "Theatre",
+      "Maison du Cryptoportique"
+    ],
+    "nb_monuments": 5,
+    "duree_totale": 112.2,
+    "score_moyen": 4.0,
+    "cout_par_categorie": {
+      "resident": 41.0,
+      "etudiant": 13.0,
+      "etranger": 53.0,
+      "enseignant": 23.0,
+      "retraite": 23.0,
+      "enfant": 13.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0094",
+    "indices": [
+      24,
+      35,
+      32,
+      34,
+      57,
+      46,
+      50
+    ],
+    "noms": [
+      "Ports puniques",
+      "Tombeaux puniques",
+      "Grand Temple d'Esculape (Eshmoun)",
+      "Absides Beule en contrebas",
+      "Monument circulaire (Martyrium)",
+      "La Rotonde de Damous El Karita",
+      "Citernes de la Malaga"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 103.8,
+    "score_moyen": 3.71,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0095",
+    "indices": [
+      29,
+      52,
+      20
+    ],
+    "noms": [
+      "La colline de Byrsa",
+      "Édifice à colonnes (Jockey club de Carthage)",
+      "Thermes d'Antonin"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 151.5,
+    "score_moyen": 4.33,
+    "cout_par_categorie": {
+      "resident": 18.0,
+      "etudiant": 4.0,
+      "etranger": 24.0,
+      "enseignant": 9.0,
+      "retraite": 9.0,
+      "enfant": 4.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0096",
+    "indices": [
+      58,
+      10,
+      54,
+      5,
+      42,
+      25,
+      51
+    ],
+    "noms": [
+      "Basilique chrétienne",
+      "Muraille de Théodose",
+      "Odéon",
+      "Maison de la Volière",
+      "Beit El Hikma",
+      "Port militaire",
+      "Cirque"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 69.2,
+    "score_moyen": 3.71,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0097",
+    "indices": [
+      42,
+      16,
+      3,
+      5,
+      55,
+      57,
+      38
+    ],
+    "noms": [
+      "Beit El Hikma",
+      "Basiliques byzantines",
+      "Maison du Cryptoportique",
+      "Maison de la Volière",
+      "Mosquée Imam Malek Ibn Anas",
+      "Monument circulaire (Martyrium)",
+      "Emplacement de la Chapelle Saint Louis"
+    ],
+    "nb_monuments": 7,
+    "duree_totale": 97.1,
+    "score_moyen": 3.86,
+    "cout_par_categorie": {
+      "resident": 36.0,
+      "etudiant": 8.0,
+      "etranger": 48.0,
+      "enseignant": 18.0,
+      "retraite": 18.0,
+      "enfant": 8.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0098",
+    "indices": [
+      15,
+      45,
+      59,
+      36,
+      28,
+      24
+    ],
+    "noms": [
+      "Tombe de la Nécropole punique",
+      "Basilique Damous Karita",
+      "Triconque",
+      "Musée national de Carthage",
+      "Temple (emplacement)",
+      "Ports puniques"
+    ],
+    "nb_monuments": 6,
+    "duree_totale": 108.6,
+    "score_moyen": 3.5,
+    "cout_par_categorie": {
+      "resident": 27.0,
+      "etudiant": 6.0,
+      "etranger": 36.0,
+      "enseignant": 13.5,
+      "retraite": 13.5,
+      "enfant": 6.0
+    }
+  },
+  {
+    "circuit_id": "CIRCUIT_0099",
+    "indices": [
+      46,
+      57,
+      38
+    ],
+    "noms": [
+      "La Rotonde de Damous El Karita",
+      "Monument circulaire (Martyrium)",
+      "Emplacement de la Chapelle Saint Louis"
+    ],
+    "nb_monuments": 3,
+    "duree_totale": 51.2,
+    "score_moyen": 3.67,
+    "cout_par_categorie": {
+      "resident": 9.0,
+      "etudiant": 2.0,
+      "etranger": 12.0,
+      "enseignant": 4.5,
+      "retraite": 4.5,
+      "enfant": 2.0
+    }
+  }
+]
