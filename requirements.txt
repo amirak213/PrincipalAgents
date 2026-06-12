@@ -1,0 +1,58 @@
+# =============================================================================
+# Requirements globaux — couvre les 4 sous-projets :
+#   - stage_AI_agentique--master (système legacy : scoring + Streamlit + chat)
+#   - dourbia_v10_final (agent location voitures "Yasmine" v10)
+#   - chatbot (Aziz — chatbot multi-agents tourisme Tunisie)
+#   - weather_agent_v4 (agent météo autonome)
+#
+# Installer dans un venv dédié :
+#   python -m venv venv && source venv/bin/activate
+#   pip install -r requirements.txt
+# =============================================================================
+
+# ---- Core / Web frameworks ----
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+slowapi>=0.1.9
+streamlit>=1.33.0
+python-multipart>=0.0.9
+
+# ---- LLM / IA ----
+groq>=0.9.0
+sentence-transformers>=3.0.0
+
+# ---- Base de données ----
+psycopg2-binary>=2.9.9
+asyncpg>=0.29.0
+sqlalchemy>=2.0.50
+redis[asyncio]>=5.0.0
+
+# ---- Data / Calcul ----
+pandas>=2.2.0
+numpy>=1.26.0
+openpyxl>=3.1.0
+plotly>=5.20.0
+
+# ---- Optimisation circuits (algorithme génétique + géo) ----
+deap>=1.4.1
+geopy>=2.4.1
+
+# ---- Scraping / HTTP ----
+httpx>=0.27.0
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+
+# ---- Config / environnement ----
+python-dotenv>=1.0.1
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+
+# ---- Observabilité ----
+langfuse>=2.36.0
+
+# ---- CLI / Terminal ----
+colorama>=0.4.6
+
+# ---- Tests ----
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
