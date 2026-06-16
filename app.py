@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
 import asyncio
 import uuid
 from chatbot.chat import chat
@@ -22,7 +23,7 @@ sessions = {}
 # Request/Response Models
 class ChatRequest(BaseModel):
     message: str
-    session_id: str = None
+    session_id: Optional[str] = None
 
 class ChatResponse(BaseModel):
     response: str
