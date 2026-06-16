@@ -80,7 +80,7 @@ export function Chatbot() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div className="flex flex-col h-screen bg-white">
       <ChatHeader onClear={handleClear} />
 
       <div className="flex-1 overflow-y-auto">
@@ -100,9 +100,9 @@ export function Chatbot() {
               <div className="flex justify-start mb-4">
                 <div className="bg-surface border border-primary-dark rounded-lg px-4 py-3">
                   <div className="flex gap-2">
-                    <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0s' }}></div>
-                    <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                    <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                    <div className="w-2 h-2 rounded-full bg-primary-light animate-bounce" style={{ animationDelay: '0s' }}></div>
+                    <div className="w-2 h-2 rounded-full bg-primary-light animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    <div className="w-2 h-2 rounded-full bg-primary-light animate-bounce" style={{ animationDelay: '0.4s' }}></div>
                   </div>
                 </div>
               </div>
