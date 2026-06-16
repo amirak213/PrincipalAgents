@@ -11,6 +11,7 @@ interface MessageData {
   text: string;
   isUser: boolean;
   timestamp: Date;
+  detectedLanguage?: string;
 }
 
 export function Chatbot() {
@@ -60,8 +61,11 @@ export function Chatbot() {
         text: response.data.response,
         isUser: false,
         timestamp: new Date(),
+        detectedLanguage: response.data.detected_language,
       };
       setMessages((prev) => [...prev, botMessage]);
+      
+      console.log(`[Frontend] Language detected: ${response.data.detected_language}`);
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMessage: MessageData = {
