@@ -1,48 +1,67 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import asyncio
 import uuid
 from chatbot.chat import chat
 
-app = Flask(__name__)
-CORS(app)
+app = FastAPI(title="Dourbia Chatbot API", version="1.0.0")
+
+# Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Store session contexts
 sessions = {}
 
-@app.route('/api/chat', methods=['POST'])
-def chat_endpoint():
+# Request/Response Models
+class ChatRequest(BaseModel):
+    message: str
+    session_id: str = None
+
+class ChatResponse(BaseModel):
+    response: str
+    session_id: str
+
+class SessionResponse(BaseModel):
+    session_id: str
+
+@app.post("/api/chat", response_model=ChatResponse)
+async def chat_endpoint(request: ChatRequest):
     try:
-        data = request.json
-        message = data.get('message', '')
-        session_id = data.get('session_id')
+        message = request.message
+        session_id = request.session_id
         
         if not session_id:
             session_id = str(uuid.uuid4())
             sessions[session_id] = True
         
         if not message:
-            return jsonify({'error': 'Message is required'}), 400
+            raise HTTPException(status_code=400, detail="Message is required")
         
         # Run the async chat function
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        response = loop.run_until_complete(chat(session_id, message))
-        loop.close()
+        response = await chat(session_id, message)
         
-        return jsonify({
-            'response': response,
-            'session_id': session_id
-        })
+        return ChatResponse(response=response, session_id=session_id)
     
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.route('/api/sessions', methods=['POST'])
-def create_session():
+@app.post("/api/sessions", response_model=SessionResponse)
+async def create_session():
     session_id = str(uuid.uuid4())
     sessions[session_id] = True
-    return jsonify({'session_id': session_id})
+    return SessionResponse(session_id=session_id)
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "service": "Dourbia Chatbot API"}
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5000)
