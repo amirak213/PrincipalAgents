@@ -1,0 +1,41 @@
+{
+  "favorite_cities_by_user": {},
+  "query_history": [
+    {
+      "date": "2026-06-06 13:51",
+      "query": "Quel temps fait-il a Tunis ?",
+      "city": null,
+      "response": "⚠️ Erreur interne : 'LongTermMemory' object has no attribute 'favorite_cities'"
+    },
+    {
+      "date": "2026-06-06 13:57",
+      "query": "Quel temps fait-il a Tunis ?",
+      "city": null,
+      "response": "⚠️ Erreur interne : 'LongTermMemory' object has no attribute 'favorite_cities'"
+    },
+    {
+      "date": "2026-06-06 14:00",
+      "query": "Quel temps fait-il a Tunis ?",
+      "city": null,
+      "response": "⚠️ Erreur interne : 'LongTermMemory' object has no attribute 'favorite_cities'"
+    },
+    {
+      "date": "2026-06-06 14:06",
+      "query": "Quel temps fait-il a Tunis ?",
+      "city": "Tunis",
+      "response": "A Tunis, la température est actuellement de 28,9 degrés Celsius, avec une sensation de 30,2 degrés C"
+    },
+    {
+      "date": "2026-06-06 14:15",
+      "query": "Quel temps fait-il a Tunis le week-end?",
+      "city": "Tunis",
+      "response": "A Tunis le week-end, vous pouvez vous attendre à des températures agréables, avec un maximum de 27,5"
+    },
+    {
+      "date": "2026-06-06 14:16",
+      "query": "Quel temps fait-il a Tunis le mardi?",
+      "city": "Tunis",
+      "response": "Malheureusement, je n'ai pas les données météo spécifiques pour le mardi à Tunis, car les informatio"
+    }
+  ]
+}
