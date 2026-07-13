@@ -1,0 +1,8 @@
+{
+  "extraPaths": [
+    "AgentPrincipal",
+    "AgentMeteo",
+    "AgentCircuit",
+    "AgentLocation"
+  ]
+}
