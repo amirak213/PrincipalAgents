@@ -43,9 +43,9 @@ def test_should_use_web_search_when_local_context_insufficient_and_enabled() -> 
     )
 
 
-def test_should_not_use_web_search_when_disabled() -> None:
+def test_should_use_web_search_when_disabled_but_local_insufficient() -> None:
     chunks = [{"chunk_text": "court", "score": 0.10}]
-    assert not should_use_web_search(
+    assert should_use_web_search(
         "Donne-moi plus de détails historiques sur Byrsa",
         chunks,
         0.10,
@@ -793,3 +793,68 @@ def test_filter_blocks_destination_tunis_for_archaeology_query() -> None:
     )
     assert len(filtered) == 1
     assert "kapitalis" in filtered[0].url.lower()
+
+
+def test_user_requests_web_search_detects_english_phrases() -> None:
+    assert user_requests_web_search("search it on the web")
+    assert user_requests_web_search("search on the web for Byrsa art")
+    assert user_requests_web_search("look it up online")
+    assert not user_requests_web_search("search artistic artworks related to it")
+
+
+def test_english_art_follow_up_resolves_to_session_monument() -> None:
+    memory = {
+        "last_mentioned_monuments": ["Colline de Byrsa"],
+        "last_substantive_user_message": "parlez-moi de la colline de byrsa",
+    }
+    resolved = resolve_query_for_context(
+        "search artistic artworks related to it",
+        memory,
+    )
+    assert "byrsa" in resolved.lower()
+    assert "artistique" in resolved.lower() or "oeuvres" in resolved.lower()
+
+
+def test_should_use_web_search_for_english_explicit_web_request() -> None:
+    chunks = [{"chunk_text": "Circuit La Marsa", "score": 0.65}]
+    memory = {
+        "last_mentioned_monuments": ["Colline de Byrsa"],
+        "last_substantive_user_message": "parlez-moi de la colline de byrsa",
+    }
+    assert should_use_web_search(
+        "search it on the web",
+        chunks,
+        0.65,
+        memory,
+        settings=_settings(enabled=False),
+    )
+
+
+def test_should_use_web_search_for_english_art_lookup_follow_up() -> None:
+    chunks = [
+        {
+            "title": "Colline de Byrsa",
+            "chunk_text": "Acropole de Carthage.",
+            "score": 0.89,
+        }
+    ]
+    memory = {
+        "last_mentioned_monuments": ["Colline de Byrsa"],
+        "last_substantive_user_message": "parlez-moi de la colline de byrsa",
+    }
+    assert should_use_web_search(
+        "search artistic artworks related to it",
+        chunks,
+        0.89,
+        memory,
+        settings=_settings(enabled=False),
+    )
+
+
+def test_build_web_search_query_resolves_english_vague_web_follow_up() -> None:
+    memory = {
+        "last_mentioned_monuments": ["Colline de Byrsa"],
+        "last_substantive_user_message": "parlez-moi de la colline de byrsa",
+    }
+    query = build_web_search_query("search it on the web", memory)
+    assert "byrsa" in query.lower()

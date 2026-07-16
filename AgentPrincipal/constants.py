@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 
 # Modèle léger pour les tâches simples (détection intention, extraction signaux)
 MODEL_FAST = "llama-3.1-8b-instant"

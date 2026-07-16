@@ -191,11 +191,16 @@ class AgentCircuitsWrapper:
 
             return {
                 "disponible": True,
-                "circuits": circuits[:n],
-                "nb_total": len(result_brut),
-                "profil_utilise": profil.to_dict(),
-                "manquants": manquants,
-                "erreur": None,
+                "response": "",
+                "error": None,
+                "payload": {
+                    "_raw": {
+                        "circuits": circuits[:n],
+                        "nb_total": len(result_brut),
+                        "profil_utilise": profil.to_dict(),
+                        "manquants": manquants,
+                    }
+                },
             }
 
         except asyncio.TimeoutError:
@@ -432,11 +437,16 @@ class AgentCircuitsWrapper:
         """Circuits hardcodés quand le moteur math est indisponible."""
         return {
             "disponible": False,
-            "circuits": _get_fallback_circuits(),
-            "nb_total": 0,
-            "profil_utilise": {},
-            "manquants": manquants or [],
-            "erreur": erreur or "service_indisponible",
+            "response": "",
+            "error": erreur or "service_indisponible",
+            "payload": {
+                "_raw": {
+                    "circuits": _get_fallback_circuits(),
+                    "nb_total": 0,
+                    "profil_utilise": {},
+                    "manquants": manquants or [],
+                }
+            },
         }
 
 

@@ -66,5 +66,7 @@ def test_normalize_supported_language_accepts_auto() -> None:
 
 
 def test_localized_messages_and_actions() -> None:
-    assert "confidence" in localized_message(INSUFFICIENT_CONTEXT_ANSWERS, "en")
+    from app.rag.language_messages import NOT_FOUND_ANSWERS
+
+    assert "reliable" in localized_message(NOT_FOUND_ANSWERS, "en")
     assert localized_action("show_hours", "ar") == "عرض أوقات الزيارة"

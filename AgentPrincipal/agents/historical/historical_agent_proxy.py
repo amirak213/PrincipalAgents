@@ -152,21 +152,35 @@ class HistoricalAgentProxy:
         result: list[dict | None] = [None]
         error: list[str] = ["timeout"]
 
+        # APRÈS
         def _call() -> None:
+            acquired = self._lock.acquire(timeout=WORKER_TIMEOUT)
+            if not acquired:
+                error[0] = "lock_occupe"
+                logger.error(
+                    "Worker historique: verrou occupé depuis plus de %.0fs — "
+                    "un appel précédent est probablement bloqué (query=%r)",
+                    WORKER_TIMEOUT,
+                    query[:80],
+                )
+                return
             try:
-                with self._lock:
-                    if self._process is None or self._process.stdin is None:
-                        error[0] = "Processus mort"
-                        return
-                    self._process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
-                    self._process.stdin.flush()
-                    line = self._process.stdout.readline()  # type: ignore[union-attr]
+                if self._process is None or self._process.stdin is None:
+                    error[0] = "Processus mort"
+                    return
+                self._process.stdin.write(
+                    json.dumps(payload, ensure_ascii=False) + "\n"
+                )
+                self._process.stdin.flush()
+                line = self._process.stdout.readline()  # type: ignore[union-attr]
                 if line:
                     result[0] = json.loads(line.strip())
                     error[0] = ""
             except Exception as exc:
                 error[0] = str(exc)
                 logger.error("Erreur communication worker historique: %s", exc)
+            finally:
+                self._lock.release()
 
         t = threading.Thread(target=_call, daemon=True)
         t.start()

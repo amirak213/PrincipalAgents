@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -12,10 +10,7 @@ from sqlalchemy.orm import Session
 from app.models.document_chunk import DocumentChunk
 from app.rag.embeddings import EmbeddingProvider, create_embedding_provider
 from app.rag.query_intent import QueryIntent, QueryIntentType, detect_query_intent
-from app.rag.reranker import Reranker, create_reranker
 from app.rag.scoring import HybridScore, compute_hybrid_score
-
-logger = logging.getLogger(__name__)
 
 DEFAULT_VECTOR_CANDIDATES = 10
 DEFAULT_TOP_K = 5
@@ -41,7 +36,6 @@ class RetrievedChunk:
     vector_score: float | None = None
     keyword_score: float | None = None
     source_type_score: float | None = None
-    neural_score: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -58,8 +52,6 @@ class RetrievedChunk:
             payload["keyword_score"] = self.keyword_score
         if self.source_type_score is not None:
             payload["source_type_score"] = self.source_type_score
-        if self.neural_score is not None:
-            payload["neural_score"] = self.neural_score
         return payload
 
 
@@ -73,11 +65,9 @@ class SemanticRetriever:
         *,
         vector_candidates: int = DEFAULT_VECTOR_CANDIDATES,
         candidate_multiplier: int | None = None,
-        reranker: Reranker | None = None,
     ) -> None:
         self._db = db
         self._embedding_provider = embedding_provider or create_embedding_provider()
-        self._reranker = reranker if reranker is not None else create_reranker()
         if candidate_multiplier is not None:
             self._vector_candidates = max(vector_candidates, candidate_multiplier)
         else:
@@ -163,12 +153,9 @@ class SemanticRetriever:
         rows: list[RetrievedChunk],
         intent: QueryIntent,
     ) -> list[RetrievedChunk]:
-        neural_scores = self._compute_neural_scores(query, rows)
         reranked: list[RetrievedChunk] = []
-        for row, neural_score in zip(rows, neural_scores):
-            vector_score = (
-                row.vector_score if row.vector_score is not None else row.score
-            )
+        for row in rows:
+            vector_score = row.vector_score if row.vector_score is not None else row.score
             hybrid = compute_hybrid_score(
                 query=query,
                 title=row.title,
@@ -176,42 +163,12 @@ class SemanticRetriever:
                 source_type=row.source_type,
                 vector_score=vector_score,
                 intent=intent,
-                neural_score=neural_score,
             )
             reranked.append(self._with_hybrid_score(row, hybrid))
         reranked.sort(key=lambda item: item.score, reverse=True)
         return reranked
 
-    def _compute_neural_scores(
-        self, query: str, rows: list[RetrievedChunk]
-    ) -> Sequence[float | None]:
-        if self._reranker is None or not rows:
-            return [None] * len(rows)
-        try:
-            raw_scores = self._reranker.score(query, [row.chunk_text for row in rows])
-        except Exception:
-            # Un reranker qui échoue à l'inférence ne doit jamais faire
-            # tomber la recherche : on repasse en scoring heuristique pour
-            # cette requête (voir scoring.py, poids sans neural_score).
-            logger.exception(
-                "Cross-encoder reranking failed at inference time; "
-                "falling back to heuristic scoring for this query."
-            )
-            return [None] * len(rows)
-        return self._min_max_normalize(raw_scores)
-
-    @staticmethod
-    def _min_max_normalize(scores: list[float]) -> Sequence[float]:
-        if not scores:
-            return []
-        lowest, highest = min(scores), max(scores)
-        if highest - lowest < 1e-9:
-            return [0.5 for _ in scores]
-        return [(score - lowest) / (highest - lowest) for score in scores]
-
-    def _with_hybrid_score(
-        self, row: RetrievedChunk, hybrid: HybridScore
-    ) -> RetrievedChunk:
+    def _with_hybrid_score(self, row: RetrievedChunk, hybrid: HybridScore) -> RetrievedChunk:
         return RetrievedChunk(
             source_type=row.source_type,
             source_id=row.source_id,
@@ -222,7 +179,6 @@ class SemanticRetriever:
             vector_score=hybrid.vector_score,
             keyword_score=hybrid.keyword_score,
             source_type_score=hybrid.source_type_component,
-            neural_score=hybrid.neural_score,
         )
 
     def _apply_filters(self, stmt: Any, filters: RetrievalFilters | None) -> Any:
@@ -238,21 +194,15 @@ class SemanticRetriever:
         if filters.destination:
             destination = filters.destination.strip()
             stmt = stmt.where(
-                DocumentChunk.metadata_json["destination_name"].astext.ilike(
-                    f"%{destination}%"
-                )
+                DocumentChunk.metadata_json["destination_name"].astext.ilike(f"%{destination}%")
             )
 
         if filters.period:
             period = filters.period.strip()
             stmt = stmt.where(
                 or_(
-                    DocumentChunk.metadata_json["dominant_period"].astext.ilike(
-                        f"%{period}%"
-                    ),
-                    DocumentChunk.metadata_json["secondary_period"].astext.ilike(
-                        f"%{period}%"
-                    ),
+                    DocumentChunk.metadata_json["dominant_period"].astext.ilike(f"%{period}%"),
+                    DocumentChunk.metadata_json["secondary_period"].astext.ilike(f"%{period}%"),
                     cast(DocumentChunk.metadata_json["dominant_periods"], String).ilike(
                         f"%{period}%"
                     ),
@@ -261,15 +211,12 @@ class SemanticRetriever:
 
         if filters.site_id is not None:
             stmt = stmt.where(
-                DocumentChunk.metadata_json["site_id"].astext.cast(Integer)
-                == filters.site_id
+                DocumentChunk.metadata_json["site_id"].astext.cast(Integer) == filters.site_id
             )
 
         return stmt
 
-    def _deduplicate_by_source(
-        self, rows: list[RetrievedChunk]
-    ) -> list[RetrievedChunk]:
+    def _deduplicate_by_source(self, rows: list[RetrievedChunk]) -> list[RetrievedChunk]:
         best_by_source: dict[tuple[str, Decimal], RetrievedChunk] = {}
         for row in rows:
             key = (row.source_type, row.source_id)

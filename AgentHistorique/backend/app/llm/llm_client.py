@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import json
 import logging
-import uuid
-from dataclasses import dataclass
-from typing import Any, Literal, Protocol, TypedDict, runtime_checkable
+from typing import Literal, Protocol, TypedDict, runtime_checkable
 
 import httpx
 
@@ -20,49 +17,13 @@ class ChatMessage(TypedDict):
     content: str
 
 
-class ToolParameterSchema(TypedDict, total=False):
-    type: str
-    properties: dict[str, Any]
-    required: list[str]
-
-
-class ToolDefinition(TypedDict):
-    """JSON-schema tool description, format OpenAI-compatible (valide pour Groq)."""
-
-    name: str
-    description: str
-    parameters: ToolParameterSchema
-
-
-ToolChoice = Literal["auto", "required", "none"]
-
-
-@dataclass(frozen=True)
-class ToolCall:
-    """Un appel de tool demandé par le modèle, arguments déjà parsés en dict."""
-
-    id: str
-    name: str
-    arguments: dict[str, Any]
-
-
-@dataclass(frozen=True)
-class LLMToolResponse:
-    content: str | None
-    tool_calls: list[ToolCall]
-    finish_reason: str
-
-    @property
-    def has_tool_calls(self) -> bool:
-        return bool(self.tool_calls)
-
-
 @runtime_checkable
 class LLMClient(Protocol):
     """Abstraction for text completion backends used by HistoricalAgent."""
 
     @property
-    def model_name(self) -> str: ...
+    def model_name(self) -> str:
+        ...
 
     def complete(
         self,
@@ -70,17 +31,8 @@ class LLMClient(Protocol):
         *,
         temperature: float = 0.2,
         max_tokens: int = 512,
-    ) -> str: ...
-
-    def complete_with_tools(
-        self,
-        messages: list[ChatMessage],
-        tools: list[ToolDefinition],
-        *,
-        tool_choice: ToolChoice = "auto",
-        temperature: float = 0.2,
-        max_tokens: int = 512,
-    ) -> LLMToolResponse: ...
+    ) -> str:
+        ...
 
 
 class LLMClientError(Exception):
@@ -95,15 +47,9 @@ OLLAMA_BASE_URL = "http://localhost:11434"
 class MockLLMClient:
     """Deterministic LLM for tests and offline development."""
 
-    def __init__(
-        self,
-        response: str = "Réponse de test.",
-        model_name: str = "mock",
-        tool_calls: list[ToolCall] | None = None,
-    ) -> None:
+    def __init__(self, response: str = "Réponse de test.", model_name: str = "mock") -> None:
         self._response = response
         self._model_name = model_name
-        self._tool_calls = tool_calls or []
 
     @property
     def model_name(self) -> str:
@@ -117,27 +63,6 @@ class MockLLMClient:
         max_tokens: int = 512,
     ) -> str:
         return self._response
-
-    def complete_with_tools(
-        self,
-        messages: list[ChatMessage],
-        tools: list[ToolDefinition],
-        *,
-        tool_choice: ToolChoice = "auto",
-        temperature: float = 0.2,
-        max_tokens: int = 512,
-    ) -> LLMToolResponse:
-        if self._tool_calls:
-            return LLMToolResponse(
-                content=None,
-                tool_calls=self._tool_calls,
-                finish_reason="tool_calls",
-            )
-        return LLMToolResponse(
-            content=self._response,
-            tool_calls=[],
-            finish_reason="stop",
-        )
 
 
 class OpenAICompatibleLLMClient:
@@ -195,58 +120,6 @@ class OpenAICompatibleLLMClient:
         except (KeyError, IndexError, AttributeError) as exc:
             raise LLMClientError("Unexpected LLM response format.") from exc
 
-    def complete_with_tools(
-        self,
-        messages: list[ChatMessage],
-        tools: list[ToolDefinition],
-        *,
-        tool_choice: ToolChoice = "auto",
-        temperature: float = 0.2,
-        max_tokens: int = 512,
-    ) -> LLMToolResponse:
-        url = f"{self._base_url}/chat/completions"
-        payload = {
-            "model": self._model_name,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "tools": _build_openai_tools_payload(tools),
-            "tool_choice": tool_choice,
-        }
-        headers = {
-            "Authorization": f"Bearer {self._api_key}",
-            "Content-Type": "application/json",
-        }
-        try:
-            with httpx.Client(timeout=self._timeout) as client:
-                response = client.post(url, json=payload, headers=headers)
-                response.raise_for_status()
-                data = response.json()
-        except httpx.HTTPStatusError as exc:
-            raise _http_status_error(exc) from exc
-        except httpx.HTTPError as exc:
-            raise LLMClientError(f"LLM request failed: {exc}") from exc
-
-        try:
-            choice = data["choices"][0]
-            message = choice["message"]
-        except (KeyError, IndexError, AttributeError) as exc:
-            raise LLMClientError("Unexpected LLM response format.") from exc
-
-        content = message.get("content")
-        if isinstance(content, str):
-            content = content.strip() or None
-
-        tool_calls = _parse_openai_tool_calls(message.get("tool_calls"))
-        finish_reason = choice.get("finish_reason") or (
-            "tool_calls" if tool_calls else "stop"
-        )
-        return LLMToolResponse(
-            content=content,
-            tool_calls=tool_calls,
-            finish_reason=finish_reason,
-        )
-
 
 class OllamaLLMClient:
     """HTTP client for local Ollama chat API."""
@@ -298,51 +171,6 @@ class OllamaLLMClient:
         if not isinstance(content, str) or not content.strip():
             raise LLMClientError("Unexpected Ollama response format.")
         return content.strip()
-
-    def complete_with_tools(
-        self,
-        messages: list[ChatMessage],
-        tools: list[ToolDefinition],
-        *,
-        tool_choice: ToolChoice = "auto",
-        temperature: float = 0.2,
-        max_tokens: int = 512,
-    ) -> LLMToolResponse:
-        # Ollama ignore tool_choice: le modèle décide seul d'appeler ou non un tool
-        # (support dépendant du modèle, ex. llama3.1+). Non utilisé en prod chez Didi.
-        url = f"{self._base_url}/api/chat"
-        payload = {
-            "model": self._model_name,
-            "messages": messages,
-            "stream": False,
-            "tools": _build_openai_tools_payload(tools),
-            "options": {
-                "temperature": temperature,
-                "num_predict": max_tokens,
-            },
-        }
-        try:
-            with httpx.Client(timeout=self._timeout) as client:
-                response = client.post(url, json=payload)
-                response.raise_for_status()
-                data = response.json()
-        except httpx.HTTPStatusError as exc:
-            raise _http_status_error(exc, provider_label="Ollama") from exc
-        except httpx.HTTPError as exc:
-            raise LLMClientError(f"Ollama request failed: {exc}") from exc
-
-        message = data.get("message", {})
-        content = message.get("content")
-        if isinstance(content, str):
-            content = content.strip() or None
-
-        tool_calls = _parse_ollama_tool_calls(message.get("tool_calls"))
-        finish_reason = "tool_calls" if tool_calls else "stop"
-        return LLMToolResponse(
-            content=content,
-            tool_calls=tool_calls,
-            finish_reason=finish_reason,
-        )
 
 
 def validate_llm_settings(settings: Settings | None = None) -> list[str]:
@@ -421,91 +249,5 @@ def _http_status_error(
             f"{provider_label} authentication failed. Check LLM_API_KEY in your .env file."
         )
     if status == 429:
-        return LLMClientError(
-            f"{provider_label} rate limit reached. Try again shortly."
-        )
+        return LLMClientError(f"{provider_label} rate limit reached. Try again shortly.")
     return LLMClientError(f"{provider_label} request failed with status {status}.")
-
-
-def _build_openai_tools_payload(tools: list[ToolDefinition]) -> list[dict[str, Any]]:
-    """Convertit les ToolDefinition internes au format attendu par l'API OpenAI/Groq."""
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": tool["name"],
-                "description": tool["description"],
-                "parameters": tool.get(
-                    "parameters", {"type": "object", "properties": {}}
-                ),
-            },
-        }
-        for tool in tools
-    ]
-
-
-def _parse_openai_tool_calls(
-    raw_tool_calls: list[dict[str, Any]] | None,
-) -> list[ToolCall]:
-    """Parse les tool_calls au format OpenAI/Groq (arguments = string JSON)."""
-    if not raw_tool_calls:
-        return []
-
-    parsed: list[ToolCall] = []
-    for raw in raw_tool_calls:
-        try:
-            function = raw["function"]
-            name = function["name"]
-            raw_arguments = function.get("arguments") or "{}"
-        except (KeyError, TypeError) as exc:
-            raise LLMClientError(
-                "Unexpected tool_call format in LLM response."
-            ) from exc
-
-        try:
-            arguments = (
-                json.loads(raw_arguments)
-                if isinstance(raw_arguments, str)
-                else raw_arguments
-            )
-        except json.JSONDecodeError as exc:
-            raise LLMClientError(
-                f"LLM returned invalid JSON arguments for tool '{name}': {raw_arguments!r}"
-            ) from exc
-
-        parsed.append(
-            ToolCall(
-                id=raw.get("id") or str(uuid.uuid4()),
-                name=name,
-                arguments=arguments if isinstance(arguments, dict) else {},
-            )
-        )
-    return parsed
-
-
-def _parse_ollama_tool_calls(
-    raw_tool_calls: list[dict[str, Any]] | None,
-) -> list[ToolCall]:
-    """Parse les tool_calls au format Ollama (arguments = dict déjà parsé, pas de id)."""
-    if not raw_tool_calls:
-        return []
-
-    parsed: list[ToolCall] = []
-    for raw in raw_tool_calls:
-        try:
-            function = raw["function"]
-            name = function["name"]
-            arguments = function.get("arguments") or {}
-        except (KeyError, TypeError) as exc:
-            raise LLMClientError(
-                "Unexpected tool_call format in Ollama response."
-            ) from exc
-
-        parsed.append(
-            ToolCall(
-                id=str(uuid.uuid4()),
-                name=name,
-                arguments=arguments if isinstance(arguments, dict) else {},
-            )
-        )
-    return parsed

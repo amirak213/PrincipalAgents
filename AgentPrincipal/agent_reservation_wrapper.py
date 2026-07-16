@@ -51,9 +51,10 @@ class AgentReservationWrapper:
             try:
                 self._ensure_worker()
                 proc = self._proc
-                assert proc is not None
-                assert proc.stdin is not None
-                assert proc.stdout is not None
+                if proc is None or proc.stdin is None or proc.stdout is None:
+                    raise RuntimeError(
+                        "Worker réservation indisponible : process ou pipes stdin/stdout manquants"
+                    )
 
                 proc.stdin.write((payload + "\n").encode("utf-8"))
                 proc.stdin.flush()
@@ -65,10 +66,10 @@ class AgentReservationWrapper:
 
                 def read_line():
                     try:
-                        
+
                         result[0] = stdout.readline().decode("utf-8", errors="replace").strip()
                     except Exception as e:
-                        
+
                         error[0] = e
 
                 t = threading.Thread(target=read_line, daemon=True)
@@ -102,12 +103,17 @@ class AgentReservationWrapper:
         try:
             payload = json.dumps({"message": message, "session_id": session_id})
             loop = asyncio.get_event_loop()
+
             result = await loop.run_in_executor(None, self._run_worker_sync, payload)
             return {
                 "disponible": True,
-                "reponse": result["reply"],
-                "tokens_uses": result.get("tokens", 0),
-                "erreur": result.get("error"),
+                "response": result["reply"],
+                "error": result.get("error"),
+                "payload": {
+                    "_raw": {
+                        "tokens_used": result.get("tokens", 0),
+                    }
+                },
             }
         except Exception as e:
             log.error(f"[RESERVATION] Erreur : {e}", exc_info=True)
@@ -116,9 +122,13 @@ class AgentReservationWrapper:
     def _fallback_response(self, erreur=None):
         return {
             "disponible": False,
-            "reponse": "Notre service de réservation est momentanément indisponible. Réessayez dans quelques instants.",
-            "tokens_uses": 0,
-            "erreur": erreur or "service_indisponible",
+            "response": "Notre service de réservation est momentanément indisponible. Réessayez dans quelques instants.",
+            "error": erreur or "service_indisponible",
+            "payload": {
+                "_raw": {
+                    "tokens_used": 0,
+                }
+            },
         }
 
 

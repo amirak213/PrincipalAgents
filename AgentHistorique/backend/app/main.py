@@ -8,7 +8,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes_chat import router as chat_router
+from app.api.routes_circuit_agent import router as circuit_router
 from app.api.routes_health import router as health_router
+from app.api.routes_monuments import router as monuments_router
 from app.config import get_settings
 from app.llm.llm_client import validate_llm_settings
 from app.logging_config import configure_logging
@@ -76,6 +78,8 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app.include_router(health_router)
 app.include_router(chat_router)
+app.include_router(circuit_router)
+app.include_router(monuments_router)
 
 if _STATIC_DIR.is_dir():
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")

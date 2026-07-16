@@ -32,22 +32,7 @@ class Settings(BaseSettings):
     embedding_device: str = "cpu"
     embedding_batch_size: int = 32
 
-    # Reranker neuronal (cross-encoder) appliqué après la recherche vectorielle.
-    # Remplace/complète le scoring heuristique à poids fixes de scoring.py.
-    # Modèle mMiniLMv2 entraîné sur mMARCO (multilingue, inclut le français).
-    # Si le chargement échoue (pas de réseau au premier démarrage, modèle non
-    # encore téléchargé, etc.), le retriever retombe automatiquement sur le
-    # scoring heuristique existant — reranker_enabled=False désactive aussi
-    # explicitement le reranker sans toucher au code.
-    reranker_enabled: bool = True
-    reranker_model_name: str = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
-    reranker_device: str = "cpu"
-
     llm_provider: str = "groq"
-    # NOTE (02/07/2026): llama-3.1-8b-instant est déprécié sur Groq (annonce
-    # du 17/06/2026, décommission ~août 2026). Remplaçant officiel Groq:
-    # openai/gpt-oss-120b ou qwen/qwen3.6-27b. Migration reportée volontairement
-    # par décision produit -> ne pas changer sans validation explicite.
     llm_model_name: str = "llama-3.1-8b-instant"
     llm_api_key: str = ""
     llm_base_url: str = ""
@@ -61,13 +46,19 @@ class Settings(BaseSettings):
     rag_score_gap_from_best: float = 0.08
     rag_min_score: float = 0.65
 
-    web_search_enabled: bool = False
+    web_search_enabled: bool = True
     web_search_provider: str = "duckduckgo"
     web_search_max_results: int = 3
     web_search_region: str = "fr-fr"
     web_search_timeout_seconds: float = 15.0
     tavily_api_key: str = ""
     tavily_search_depth: str = "basic"
+
+    circuit_ga_population_size: int = 40
+    circuit_ga_generations: int = 50
+    circuit_ga_mutation_rate: float = 0.15
+    circuit_ga_crossover_rate: float = 0.8
+    circuit_ga_elitism: bool = True
 
     cors_origins: list[str] = [
         "http://localhost:5173",

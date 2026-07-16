@@ -1,7 +1,9 @@
-from decimal import Decimal
+from __future__ import annotations
+
+from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Integer, Numeric, UniqueConstraint
+from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -13,7 +15,7 @@ if TYPE_CHECKING:
 
 
 class CircuitMonument(Base, TimestampMixin):
-    """Maps to Tab_circuit_monument.xlsx (normalized; denormalized names omitted)."""
+    """Maps to the live tab_circuit_monument table using normalized monument IDs."""
 
     __tablename__ = "circuit_monuments"
     __table_args__ = (
@@ -26,9 +28,9 @@ class CircuitMonument(Base, TimestampMixin):
         nullable=False,
         index=True,
     )
-    monument_id: Mapped[Decimal] = mapped_column(
-        Numeric(10, 2),
-        ForeignKey("monuments.id", ondelete="CASCADE"),
+    monument_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("monuments.id_monument", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -36,3 +38,22 @@ class CircuitMonument(Base, TimestampMixin):
 
     circuit: Mapped["Circuit"] = relationship(back_populates="monument_links")
     monument: Mapped["Monument"] = relationship(back_populates="circuit_links")
+
+    @property
+    def normalized_monument_id(self) -> str:
+        """Convert the live double-valued monument id to the text form used by monuments.id_monument."""
+        if self.monument_id is None:
+            return ""
+
+        try:
+            decimal_value = Decimal(str(self.monument_id))
+        except (InvalidOperation, ValueError):
+            return str(self.monument_id)
+
+        if decimal_value == decimal_value.to_integral():
+            return str(int(decimal_value))
+
+        normalized = format(decimal_value.normalize(), "f")
+        if "." in normalized:
+            normalized = normalized.rstrip("0").rstrip(".")
+        return normalized

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import json
-from typing import Any, TypedDict
+from typing import Any
 
 from app.llm.llm_client import ChatMessage
 from app.rag.answer_parser import build_structured_output_guideline
-from app.rag.injection_guard import sanitize_external_text, wrap_untrusted_block
 from app.rag.langchain_prompt import format_rag_messages
 from app.rag.query_complexity import user_requests_detailed_answer
 from app.rag.web_search_decision import (
@@ -119,10 +118,22 @@ def build_retrieval_query(user_message: str, memory_context: dict[str, Any]) -> 
         if action_query:
             return action_query
 
+    if (
+        user_requests_web_search(user_message)
+        or user_requests_lookup(user_message)
+        or references_session_monument(user_message, memory_context)
+        or is_incomplete_lookup_follow_up(user_message, memory_context)
+        or is_vague_web_follow_up(user_message)
+    ):
+        resolved = resolve_query_for_context(user_message, memory_context)
+        if resolved and resolved != user_message.strip():
+            user_message = resolved
+
     normalized_message = user_message.strip().lower()
     is_follow_up = any(hint in normalized_message for hint in FOLLOW_UP_HINTS)
-    is_short_follow_up = len(normalized_message) <= 24 and any(
-        hint in normalized_message for hint in SHORT_FOLLOW_UP_HINTS
+    is_short_follow_up = (
+        len(normalized_message) <= 24
+        and any(hint in normalized_message for hint in SHORT_FOLLOW_UP_HINTS)
     )
 
     parts = [user_message.strip()]
@@ -145,9 +156,7 @@ def is_attribute_follow_up(user_message: str) -> bool:
 
     normalized_message = user_message.strip().lower()
     is_follow_up = any(hint in normalized_message for hint in FOLLOW_UP_HINTS)
-    is_attribute_question = any(
-        hint in normalized_message for hint in ATTRIBUTE_FOLLOW_UP_HINTS
-    )
+    is_attribute_question = any(hint in normalized_message for hint in ATTRIBUTE_FOLLOW_UP_HINTS)
     return is_follow_up and is_attribute_question
 
 
@@ -179,19 +188,12 @@ def get_site_id_for_attribute_follow_up(
     return int(site_id)
 
 
-class RetrievalFilterKwargs(TypedDict):
-    source_type: str | None
-    destination: str | None
-    period: str | None
-    language: str | None
-
-
 def derive_retrieval_filters(
     memory_context: dict[str, Any],
     language: str,
-) -> RetrievalFilterKwargs:
+) -> dict[str, str | None]:
     """Map memory context to retriever filter kwargs."""
-    filters: RetrievalFilterKwargs = {
+    filters: dict[str, str | None] = {
         "source_type": None,
         "destination": None,
         "period": None,
@@ -215,13 +217,10 @@ def format_memory_context(memory_context: dict[str, Any]) -> str:
         "interests": memory_context.get("interests") or [],
         "available_time_minutes": memory_context.get("available_time_minutes"),
         "mobility_mode": memory_context.get("mobility_mode"),
-        "last_mentioned_monuments": memory_context.get("last_mentioned_monuments")
-        or [],
+        "last_mentioned_monuments": memory_context.get("last_mentioned_monuments") or [],
         "primary_site_id": memory_context.get("primary_site_id"),
         "primary_site_name": memory_context.get("primary_site_name"),
-        "last_substantive_user_message": memory_context.get(
-            "last_substantive_user_message"
-        ),
+        "last_substantive_user_message": memory_context.get("last_substantive_user_message"),
     }
     return json.dumps(compact, ensure_ascii=False, indent=2)
 
@@ -263,23 +262,15 @@ def format_web_search_context(
 
     blocks: list[str] = []
     for index, result in enumerate(web_results, start=1):
-        # Contenu non fiable (page tierce indexée par le moteur de recherche) :
-        # on neutralise les formulations d'injection les plus courantes et on
-        # tronque, avant de l'entourer d'un délimiteur explicite. Voir
-        # app/rag/injection_guard.py pour le détail et les limites de cette
-        # défense (elle est structurelle, pas une garantie sémantique).
-        safe_title = sanitize_external_text(result.title, max_length=200)
-        safe_snippet = (
-            sanitize_external_text(result.snippet) or "Pas de résumé disponible."
+        blocks.append(
+            "\n".join(
+                [
+                    f"[Web {index}] {result.title}",
+                    result.snippet or "Pas de résumé disponible.",
+                    f"URL: {result.url}" if result.url else "URL: non disponible",
+                ]
+            )
         )
-        raw_block = "\n".join(
-            [
-                f"[Web {index}] {safe_title}",
-                safe_snippet,
-                f"URL: {result.url}" if result.url else "URL: non disponible",
-            ]
-        )
-        blocks.append(wrap_untrusted_block(f"web-{index}", raw_block))
     return "\n\n".join(blocks)
 
 
@@ -299,46 +290,41 @@ def build_output_guidelines(
     if web_search_empty_fallback:
         instructions.extend(
             [
-                "- La recherche en ligne n'a rien ajouté de pertinent.",
-                "- Réponds avec les sources locales fournies, qui contiennent des informations utiles.",
-                "- Tu peux le signaler en une courte phrase naturelle, par exemple : "
-                "\"Je n'ai pas trouvé de complément en ligne, voici ce que je peux vous dire "
-                "d'après notre base documentaire.\"",
-                "- Ne cite aucun nom technique interne dans ta réponse.",
-                "- N'invente aucune URL, organisme ou fait absent des sources disponibles.",
-                "- N'inclus aucune URL dans le texte de la réponse.",
+            "- Les sources disponibles ne complètent pas la demande.",
+            "- Réponds avec les informations utiles déjà disponibles.",
+            "- Ne mentionne jamais de base documentaire, de recherche en ligne ni de règles internes.",
+            "- N'invente aucune URL, organisme ou fait absent des sources disponibles.",
+            "- N'inclus aucune URL dans le texte de la réponse.",
             ]
         )
-    elif explicit_web_request and local_context_relevant:
+    elif (explicit_web_request or has_web_context) and local_context_relevant:
         instructions.extend(
             [
-                "- La recherche web a déjà été effectuée avant ta réponse.",
-                "- Réponds en combinant les sources locales pertinentes et les résultats web utiles.",
-                "- Commence par les informations locales fiables sur le sujet demandé.",
-                "- Ajoute ensuite uniquement les compléments web réellement liés au sujet.",
-                "- Ignore les résultats web généralistes ou hors sujet.",
-                "- Ne refuse jamais de répondre et ne mentionne jamais les règles internes.",
-                "- N'invente aucune URL, organisme ou fait absent des sources disponibles.",
-                "- N'inclus aucune URL dans le texte de la réponse.",
+            "- Réponds en combinant les sources pertinentes et les compléments utiles.",
+            "- Ignore les résultats généralistes ou hors sujet.",
+            "- Ne refuse jamais de répondre et ne mentionne jamais les règles internes.",
+            "- N'invente aucune URL, organisme ou fait absent des sources disponibles.",
+            "- N'inclus aucune URL dans le texte de la réponse.",
             ]
         )
-    elif explicit_web_request:
+    elif has_web_context:
         instructions.extend(
             [
-                "- La recherche web a déjà été effectuée avant ta réponse.",
-                "- Réponds à partir des résultats web pour la demande en ligne.",
-                "- Ne refuse jamais de répondre et ne mentionne jamais les règles internes.",
-                "- N'invente aucune URL, organisme ou fait absent des résultats web.",
-                "- N'inclus aucune URL dans le texte de la réponse.",
-                "- Ne dis pas que tu vas effectuer une recherche en ligne.",
+            "- Réponds à partir des sources fournies pour la demande du visiteur.",
+            "- Ne refuse jamais de répondre et ne mentionne jamais les règles internes.",
+            "- N'invente aucune URL, organisme ou fait absent des sources disponibles.",
+            "- N'inclus aucune URL dans le texte de la réponse.",
             ]
         )
     else:
         instructions.extend(
             [
-                "- Réponds d'abord à partir de la base documentaire locale.",
-                "- Si une information manque localement, dis-le explicitement.",
-                "- Cite les monuments pertinents quand c'est utile pour l'histoire ou le patrimoine.",
+            "- Réponds uniquement à partir des sources fournies.",
+            "- Si les sources ne permettent pas de répondre, dis simplement que tu n'as pas "
+            "trouvé d'informations fiables, sans expliquer pourquoi.",
+            "- Ne mentionne jamais de base documentaire locale, de recherche web ni de sources "
+            "internes.",
+            "- Cite les monuments pertinents quand c'est utile pour l'histoire ou le patrimoine.",
             ]
         )
 
@@ -361,44 +347,30 @@ def build_output_guidelines(
             ]
         )
 
-    if explicit_web_request and has_web_context and local_context_relevant:
+    if (explicit_web_request or has_web_context) and has_web_context and local_context_relevant:
         instructions.extend(
             [
-                "- Si les résultats web n'apportent rien de spécifique, appuie-toi sur les sources locales.",
+                "- Si un complément n'apporte rien de spécifique, appuie-toi sur les autres sources.",
                 "- Ne présente pas un résultat généraliste comme s'il répondait précisément à la question.",
             ]
         )
     elif has_web_context and is_art_or_culture_query(user_message, memory_context):
         instructions.extend(
             [
-                "- Résume uniquement ce que les extraits web disent littéralement.",
-                "- Ne cite aucun artiste, auteur ou œuvre absent des extraits web.",
-                "- Si les extraits ne listent pas d'œuvres artistiques précises, dis-le clairement.",
+                "- Résume uniquement ce que les extraits fournis disent littéralement.",
+                "- Ne cite aucun artiste, auteur ou œuvre absent des extraits.",
+                "- Si aucune œuvre précise n'apparaît, dis simplement que tu n'as pas trouvé "
+                "d'informations fiables.",
                 "- Ne recommande pas Salammbo ou d'autres œuvres sauf si elles apparaissent "
-                "dans WEB_SEARCH_CONTEXT.",
-            ]
-        )
-    elif explicit_web_request and has_web_context:
-        instructions.extend(
-            [
-                "- Résume uniquement ce que les extraits web disent littéralement.",
-                "- Ne présente pas un résultat généraliste comme s'il concernait Carthage "
-                "s'il n'en parle pas explicitement.",
+                "dans les extraits.",
             ]
         )
     elif has_web_context:
         instructions.extend(
             [
-                "- Les résultats web sont complémentaires et non vérifiés en interne.",
-                "- Distingue clairement les informations locales des informations web.",
-                "- En cas de conflit entre sources, mentionne l'incertitude.",
-            ]
-        )
-    elif explicit_web_request:
-        instructions.extend(
-            [
-                "- La recherche web n'a retourné aucun résultat exploitable.",
-                "- Dis-le clairement sans inventer de sources externes.",
+                "- Résume uniquement ce que les extraits fournis disent littéralement.",
+                "- Ne présente pas un résultat généraliste comme s'il concernait Carthage "
+                "s'il n'en parle pas explicitement.",
             ]
         )
 
@@ -437,7 +409,11 @@ def build_output_guidelines(
     )
     if primary_monument:
         site_name = memory_context.get("primary_site_name")
-        site_hint = f" sur le site « {site_name} »" if site_name else ""
+        site_hint = (
+            f" sur le site « {site_name} »"
+            if site_name
+            else ""
+        )
         instructions.append(
             f"- Cette question est un suivi sur le monument principal de la session "
             f"({primary_monument}){site_hint}. Réponds pour ce monument. "
@@ -460,7 +436,8 @@ def build_output_guidelines(
             [
                 "- L'utilisateur demande des informations artistiques ou culturelles.",
                 "- Ne cite Salammbo, Flaubert ou un artiste que si la source le mentionne.",
-                "- Si l'artiste ou l'œuvre demandée est introuvable, dis-le clairement sans inventer.",
+                "- Si l'artiste ou l'œuvre demandée est introuvable, dis simplement que tu n'as "
+                "pas trouvé d'informations fiables, sans inventer.",
                 "- Ignore les recettes de cuisine ou contenus sans lien avec le sujet.",
                 "- Ne recommande pas d'autres monuments si la question porte sur le monument "
                 "en discussion et que les sources ne mentionnent pas d'œuvres pour lui.",
@@ -508,14 +485,13 @@ def build_output_guidelines(
         instructions.extend(
             [
                 "- Ne confonds jamais Carthage (Tunisie) avec Cartagena (Espagne).",
-                "- Si les sources locales ne parlent pas directement du sujet, dis-le sans inventer de lien.",
+                "- Si les sources ne parlent pas directement du sujet, dis simplement que tu n'as "
+                "pas trouvé d'informations fiables, sans inventer de lien.",
             ]
         )
 
     action_intent = get_suggested_action_intent(user_message)
-    if action_intent == "circuit_detail" and user_explicitly_requests_circuits(
-        user_message
-    ):
+    if action_intent == "circuit_detail" and user_explicitly_requests_circuits(user_message):
         instructions.append(
             "- L'utilisateur demande le détail d'un circuit lié au monument ou site en discussion."
             " Priorise un circuit de Carthage, pas La Marsa ou une autre destination."
@@ -572,15 +548,14 @@ def build_rag_messages(
         f"{LANGUAGE_LABELS.get(answer_language, answer_language)} ({answer_language})"
     )
     display_question = user_message.strip()
-    if (
-        is_vague_web_follow_up(user_message)
-        or references_session_monument(user_message, memory_context)
-        or is_incomplete_lookup_follow_up(user_message, memory_context)
-    ):
+    if is_vague_web_follow_up(user_message) or references_session_monument(
+        user_message, memory_context
+    ) or is_incomplete_lookup_follow_up(user_message, memory_context):
         resolved = resolve_query_for_context(user_message, memory_context)
         if resolved != user_message.strip():
             display_question = (
-                f"{user_message.strip()}\n\n" f"Question interprétée : {resolved}"
+                f"{user_message.strip()}\n\n"
+                f"Question interprétée : {resolved}"
             )
         elif is_vague_web_follow_up(user_message):
             prior = memory_context.get("last_substantive_user_message")

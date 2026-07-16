@@ -1,4 +1,4 @@
-Write-Host "Demarrage Dourbia..." -ForegroundColor Cyan
+﻿Write-Host "Demarrage Dourbia..." -ForegroundColor Cyan
 
 # Redis
 Write-Host "[1/3] Redis..." -ForegroundColor Yellow

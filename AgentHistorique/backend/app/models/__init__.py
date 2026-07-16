@@ -10,6 +10,8 @@ from app.models.destination import Destination
 from app.models.document_chunk import DocumentChunk
 from app.models.memory import ChatMessage, UserPreference, UserSession
 from app.models.monument import Monument
+from app.models.monument_distance import MonumentDistance
+from app.models.reference_circuit import ReferenceCircuit
 
 __all__ = [
     "Base",
@@ -19,6 +21,8 @@ __all__ = [
     "Destination",
     "DocumentChunk",
     "Monument",
+    "MonumentDistance",
+    "ReferenceCircuit",
     "UserPreference",
     "UserSession",
 ]

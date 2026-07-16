@@ -17,6 +17,7 @@ import asyncio
 import logging
 import os
 import sys
+from typing import Optional
 
 # ── Assure que le dossier chatbot_tunisie est dans le path ────────────────────
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -84,7 +85,8 @@ def inject_systeme(systeme) -> None:
 # INTERFACE PRINCIPALE
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def chat(session_id: str, message: str) -> str:
+
+async def chat(session_id: str, message: str, action: Optional[dict] = None) -> str:
     """
     Interface principale du chatbot — appelée par Streamlit ou tout autre frontend.
 
@@ -100,7 +102,9 @@ async def chat(session_id: str, message: str) -> str:
         reponse = await chat("user-123", "Je veux visiter Carthage avec ma famille")
     """
     orchestrateur = _get_orchestrateur()
-    return await orchestrateur.handle_message(user_id=session_id, message=message)
+    return await orchestrateur.handle_message(
+        user_id=session_id, message=message, action=action
+    )
 
 
 def chat_sync(session_id: str, message: str) -> str:
@@ -155,7 +159,8 @@ async def _cli_loop():
             break
 
         if user_input.lower() == "reset":
-            from session_memory import clear_history, purge_session
+            from AgentPrincipal.session_memory import clear_history, purge_session
+
             purge_session(session_id)
             global _orchestrateur
             _orchestrateur = None

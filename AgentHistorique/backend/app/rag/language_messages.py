@@ -2,71 +2,32 @@ from __future__ import annotations
 
 from app.rag.language_detection import normalize_supported_language
 
-INSUFFICIENT_CONTEXT_ANSWERS = {
-    "fr": (
-        "Je ne dispose pas d'informations suffisantes dans ma base documentaire "
-        "pour répondre à cette question avec certitude."
-    ),
-    "en": (
-        "I do not have enough information in the local knowledge base "
-        "to answer this question with confidence."
-    ),
-    "ar": (
-        "لا أملك معلومات كافية في قاعدة المعرفة المحلية "
-        "للإجابة على هذا السؤال بثقة."
-    ),
+NOT_FOUND_ANSWERS = {
+    "fr": "Je n'ai pas trouvé d'informations fiables sur ce sujet.",
+    "en": "I couldn't find reliable information on this topic.",
+    "ar": "لم أجد معلومات موثوقة حول هذا الموضوع.",
 }
 
-NO_RELEVANT_WEB_RESULTS_ANSWERS = {
-    "fr": (
-        "Je n'ai pas trouvé de résultats web clairement liés à votre question. "
-        "Ma base documentaire locale ne contient pas non plus d'informations "
-        "pertinentes sur ce sujet."
-    ),
-    "en": (
-        "I could not find web results clearly related to your question. "
-        "The local knowledge base also does not contain relevant information "
-        "on this topic."
-    ),
-    "ar": (
-        "لم أجد نتائج ويب مرتبطة بوضوح بسؤالك. "
-        "كما أن قاعدة المعرفة المحلية لا تحتوي على معلومات مناسبة "
-        "حول هذا الموضوع."
-    ),
-}
+# Kept for evaluation scripts and backward-compatible imports.
+INSUFFICIENT_CONTEXT_ANSWERS = NOT_FOUND_ANSWERS
+
+NO_RELEVANT_WEB_RESULTS_ANSWERS = NOT_FOUND_ANSWERS
 
 NO_ART_WEB_RESULTS_ANSWERS = {
     "fr": (
-        "Je n'ai pas trouvé, dans la base locale ni en ligne, d'informations "
-        "précises sur des œuvres artistiques liées à ce monument. "
-        "Les sources consultées décrivent surtout l'histoire ou la visite du site, "
-        "sans identifier d'objets ou de créations artistiques particulières."
+        "Je n'ai pas trouvé d'informations précises sur des œuvres artistiques "
+        "liées à ce sujet."
     ),
     "en": (
-        "I could not find precise information about artworks linked to this monument "
-        "in the local knowledge base or online. Available sources mainly describe "
-        "the site's history or visit, without identifying specific artistic objects."
+        "I couldn't find precise information about artworks related to this topic."
     ),
-    "ar": (
-        "لم أجد معلومات دقيقة عن أعمال فنية مرتبطة بهذا الأثر في المصادر المحلية "
-        "أو عبر الإنترنت. المصادر المتاحة تصف تاريخ الموقع أو زيارته دون تحديد "
-        "قطع أو أعمال فنية محددة."
-    ),
+    "ar": "لم أجد معلومات دقيقة عن أعمال فنية مرتبطة بهذا الموضوع.",
 }
 
 LOCAL_CONTEXT_NOT_RELEVANT_NOTES = {
-    "fr": (
-        "La base documentaire locale ne contient pas d'informations pertinentes "
-        "pour cette question (monuments et circuits touristiques uniquement)."
-    ),
-    "en": (
-        "The local knowledge base does not contain relevant information for this "
-        "question (tourist monuments and circuits only)."
-    ),
-    "ar": (
-        "قاعدة المعرفة المحلية لا تحتوي على معلومات مناسبة لهذا السؤال "
-        "(الآثار والمسارات السياحية فقط)."
-    ),
+    "fr": "Aucune source pertinente pour cette question.",
+    "en": "No relevant sources for this question.",
+    "ar": "لا توجد مصادر مناسبة لهذا السؤال.",
 }
 
 EMPTY_RETRIEVED_CONTEXT = {

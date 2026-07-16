@@ -25,6 +25,7 @@ import logging
 import re
 import difflib
 import time
+from functools import lru_cache
 from typing import Optional
 
 from groq import Groq
@@ -56,7 +57,7 @@ from constants import (
     HISTORIQUE_KEYWORDS_EN,
     HISTORIQUE_KEYWORDS_AR,
 )
-from session_memory import (
+from AgentPrincipal.session_memory import (
     get_history,
     set_history,
     get_profile,
@@ -91,6 +92,15 @@ from packs_tool import (  # type: ignore[import]
 )
 from geo_service import get_geo_service
 from agents.historical.historical_agent_proxy import HistoricalAgentProxy
+from wizard_state_machine import (
+    WizardState,
+    WizardEvent,
+    WizardStore,
+    apply_event,
+    start_wizard,
+    question_for_state,
+)
+from redis_client import get_redis
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ORCHESTRATEUR PRINCIPAL
@@ -149,7 +159,9 @@ class OrchestratorAgent:
     # MÉTHODE PRINCIPALE
     # ─────────────────────────────────────────────────────────────────────────
 
-    async def handle_message(self, user_id: str, message: str) -> str:
+    async def handle_message(
+        self, user_id: str, message: str, action: Optional[dict] = None
+    ) -> str:
         """
         Méthode principale appelée à chaque message utilisateur.
 
@@ -205,7 +217,72 @@ class OrchestratorAgent:
 
             # ── ÉTAPE 2quinquies : Activation du mode guide GPS après choix de circuit ──
             if profil.get("attente_activation_guide") and is_affirmation(message):
-                 return await self._activer_mode_guide(user_id, message, profil, historique, langue)
+                return await self._activer_mode_guide(user_id, message, profil, historique, langue)
+            # ── ÉTAPE 2sexies : Wizard circuit structuré (Phase 1) ─────────
+            wizard_store = WizardStore(await get_redis())
+
+            if action and action.get("type") == "start_wizard":
+                wizard = start_wizard(user_id)
+                await wizard_store.save(wizard)
+                reponse_finale = question_for_state(wizard.state, langue)
+                await self._update_memory(
+                    user_id=user_id,
+                    message=message,
+                    reponse=reponse_finale,
+                    signaux={"wizard_state": wizard.state.value},
+                    langue=langue,
+                    intention="WIZARD",
+                    historique=historique,
+                    profil=profil,
+                )
+                return reponse_finale
+
+            wizard = await wizard_store.get(user_id)
+            if wizard and wizard.state != WizardState.IDLE and action:
+                try:
+                    event_type = action.get("type")
+                    if not event_type:
+                        raise ValueError("action.type manquant ou vide")
+                    event = WizardEvent(type=event_type, value=action.get("value"))
+                    wizard = apply_event(wizard, event)
+                    await wizard_store.save(wizard)
+                except ValueError as e:
+                    log.warning(f"[WIZARD] Événement invalide : {e}")
+
+                if wizard.state == WizardState.CIRCUIT_GENERATION:
+                    reponse_finale = await self._generate_wizard_circuit(
+                        user_id, wizard, wizard_store, langue
+                    )
+                else:
+                    reponse_finale = question_for_state(wizard.state, langue)
+
+                if wizard.state == WizardState.CIRCUIT_GENERATION:
+                    reponse_finale = await self._generate_wizard_circuit(
+                        user_id, wizard, wizard_store, langue
+                    )
+                else:
+                    reponse_finale = question_for_state(wizard.state, langue)
+
+                if wizard.state == WizardState.GUIDE_MODE_READY:
+                    update_profile(user_id, {
+                        "mode_guide_actif": True,
+                        "circuit_confirme_id": wizard.circuit_result.get("circuit_id"),
+                        "circuit_confirme_nom": wizard.circuit_result.get("title"),
+                    })
+
+                await self._update_memory(
+                    user_id=user_id,
+                    message=message,
+                    reponse=reponse_finale,
+                    signaux={"wizard_state": wizard.state.value},
+                    langue=langue,
+                    intention="WIZARD",
+                    historique=historique,
+                    profil=profil,
+                )
+                return reponse_finale
+            # Si wizard actif mais pas d'action (texte libre) → déviation,
+            # non géré ici (Phase 5 du plan). On laisse tomber dans le flow normal.
             # ── Court-circuit : Suite du filtrage des packs touristiques ──
             if profil.get("attente_filtre_pack", False):
                 category = detect_filter_category(message)
@@ -350,10 +427,12 @@ class OrchestratorAgent:
 
             if intention == "RESERVATION" and "agent_reservation" in agents_responses:
                 res_data = agents_responses["agent_reservation"]
-                if res_data and isinstance(res_data, dict) and res_data.get("reponse"):
-                    reponse_finale = res_data["reponse"]
+                if res_data and isinstance(res_data, dict) and res_data.get("response"):
+                    reponse_finale = res_data["response"]
                 else:
-                    reponse_finale = FALLBACK_MESSAGES.get(langue, FALLBACK_MESSAGES["FR"])
+                    reponse_finale = FALLBACK_MESSAGES.get(
+                        langue, FALLBACK_MESSAGES["FR"]
+                    )
                 attente_circuit = False
 
             # ── Court-circuit agent historique ────────────────────────────
@@ -727,17 +806,31 @@ class OrchestratorAgent:
         # Réservation
         if "agent_reservation" in agents_to_call:
             try:
+
+                # ⚠️ RISQUE DE SATURATION (Phase 2, point 5) :
+                # Ce timeout de 180s est nécessaire au démarrage à froid du subprocess
+                # Yasmine (Python + appel LLM Groq), mais agent_reservation_wrapper.py
+                # sérialise tous les appels via un unique threading.Lock (un seul
+                # worker subprocess partagé, cf. _run_worker_sync).
+                # Concrètement : si 10 utilisateurs font une demande de réservation
+                # en même temps, ils sont traités en file d'attente strictement
+                # séquentielle, chacun pouvant attendre jusqu'à 180s son tour +
+                # son propre traitement — le 10ème utilisateur peut donc attendre
+                # jusqu'à ~1800s (30 min) dans le pire cas avant timeout.
+                # Pas de correctif ici : à traiter via un pool de workers ou une
+                # file d'attente avec feedback utilisateur ("votre demande est en cours").
                 reservation_data = await asyncio.wait_for(
                     self._call_agent_reservation(message, user_id),
                     timeout=180.0,  # subprocess dourbia : démarrage Python + LLM Groq
                 )
                 responses["agent_reservation"] = reservation_data
+
             except asyncio.TimeoutError:
                 log.warning("[ORCHESTRATEUR] Timeout agent réservation")
-                responses["agent_reservation"] = {"disponible": False, "reponse": None, "erreur": "timeout"}
+                responses["agent_reservation"] = {"disponible": False, "response": None, "error": "timeout", "payload": {"_raw": {}}}
             except Exception as e:
                 log.warning(f"[ORCHESTRATEUR] Erreur agent réservation : {e}", exc_info=True)
-                responses["agent_reservation"] = {"disponible": False, "reponse": None, "erreur": str(e)}
+                responses["agent_reservation"] = {"disponible": False, "response": None, "error": str(e), "payload": {"_raw": {}}}
 
         # Guide historique / pratique (TODO: RAG pgvector)
         if "agent_guide" in agents_to_call:
@@ -758,7 +851,9 @@ class OrchestratorAgent:
                     timeout=AGENT_TIMEOUT_SECONDS,
                 )
                 responses["agent_meteo"] = meteo_data
-                log.info(f"  Météo : {meteo_data.get('donnees_brutes', {}).get('alerte', {}).get('level', 'N/A')}")
+                log.info(
+                    f"  Météo : {self._meteo_raw(meteo_data).get('donnees_brutes', {}).get('alerte', {}).get('level', 'N/A')}"
+                )
             except asyncio.TimeoutError:
                 log.warning("[ORCHESTRATEUR] Timeout agent météo")
                 responses["agent_meteo"] = None
@@ -798,6 +893,38 @@ class OrchestratorAgent:
 
         return responses
 
+    def _circuits_raw(self, circuits_data: Optional[dict]) -> dict:
+        """Extrait payload['_raw'] d'une réponse AgentResponseBase de l'agent circuits."""
+        if not circuits_data:
+            return {}
+        return circuits_data.get("payload", {}).get("_raw", {})
+
+    def _meteo_raw(self, meteo_response: Optional[dict]) -> dict:
+        """Extrait payload['_raw'] d'une réponse AgentResponseBase de l'agent météo."""
+        if not meteo_response:
+            return {}
+        return meteo_response.get("payload", {}).get("_raw", {})
+
+    def _meteo_to_flat(self, meteo_response: Optional[dict]) -> dict:
+        """Reconstruit l'ancien format plat météo, pour agent_circuits_wrapper
+        qui attend encore ce format (non migré dans ce lot)."""
+        if not meteo_response:
+            return {
+                "disponible": False,
+                "final_answer": "",
+                "donnees_brutes": {},
+                "ville": "",
+                "erreur": None,
+            }
+        raw = self._meteo_raw(meteo_response)
+        return {
+            "disponible": meteo_response.get("disponible", False),
+            "final_answer": raw.get("final_answer", ""),
+            "donnees_brutes": raw.get("donnees_brutes", {}),
+            "ville": raw.get("ville", ""),
+            "erreur": meteo_response.get("error"),
+        }
+
     async def _call_agent_meteo(self, message: str, user_id: str) -> dict:
         """Appel à l'agent météo."""
         return await self._meteo.get_weather(message, user_id)
@@ -811,17 +938,19 @@ class OrchestratorAgent:
         - Plus besoin de client en base
         - Retourne aussi profil_utilise et manquants pour le prompt de synthèse
         """
+        meteo_flat = self._meteo_to_flat(meteo_data)
         result = await self._circuits.get_recommendations(
             user_id=user_id,
             signals=signaux,
             n=3,
-            meteo_data=meteo_data,
+            meteo_data=meteo_flat,
         )
 
         # Ajouter conseil météo à chaque circuit
-        if meteo_data and meteo_data.get("disponible"):
-            donnees_brutes = meteo_data.get("donnees_brutes", {})
-            for circuit in result.get("circuits", []):
+        raw = self._circuits_raw(result)
+        if meteo_flat.get("disponible"):
+            donnees_brutes = meteo_flat.get("donnees_brutes", {})
+            for circuit in raw.get("circuits", []):
                 lieu_circuit = signaux.get("lieu", "")
                 circuit["conseil_meteo"] = self._meteo.get_outdoor_recommendation(
                     donnees_brutes,
@@ -829,6 +958,51 @@ class OrchestratorAgent:
                 )
 
         return result
+
+    async def _generate_wizard_circuit(
+        self, user_id: str, wizard, wizard_store, langue: str
+    ) -> str:
+        from circuit_engine import recommend_circuit, CircuitProfil
+
+        budget = wizard.budget or {}
+        duration_hours = (wizard.dates or {}).get("duration_hours")
+        duree_max = duration_hours * 60 if duration_hours else None
+
+        profil = CircuitProfil(
+            budget_max=budget.get("amount", 9999),
+            type_tarif=budget.get("type", "etranger"),
+            mobilite=wizard.mobility or "walking",
+            transport=wizard.mobility or "walking",
+            duree_max=duree_max,
+        )
+
+        try:
+            result = await asyncio.to_thread(recommend_circuit, profil, 3)
+        except Exception as e:
+            log.error(f"[WIZARD] Échec technique recommend_circuit : {e}")
+            wizard.state = WizardState.CIRCUIT_ADJUSTMENT
+            await wizard_store.save(wizard)
+            return (
+                "Une erreur technique m'empêche de générer votre circuit "
+                "pour l'instant — voulez-vous ajuster votre budget ou vos dates "
+                "pour réessayer ?"
+            )
+
+        circuits = result["circuits"]
+
+        if not circuits:
+            wizard.state = WizardState.CIRCUIT_ADJUSTMENT
+            await wizard_store.save(wizard)
+            warning_msg = result["warnings"][0] if result.get("warnings") else None
+            return warning_msg or (
+                "Je n'ai trouvé aucun circuit correspondant à votre budget "
+                "ou vos dates — voulez-vous les ajuster ?"
+            )
+
+        wizard.circuit_result = circuits[0]
+        wizard.state = WizardState.CIRCUIT_REVIEW
+        await wizard_store.save(wizard)
+        return question_for_state(wizard.state, langue)
 
     async def _call_agent_reservation(self, message: str, user_id: str) -> dict:
         """
@@ -839,12 +1013,24 @@ class OrchestratorAgent:
         reservation_session_id = f"reservation_{user_id}"
         return await self._reservation.handle_message(message, reservation_session_id)
 
+    @lru_cache(maxsize=512)
+    def _encode_cached(self, message: str) -> tuple:
+        """
+        Cache LRU sur les embeddings (Phase 2, point 1).
+        SentenceTransformer.encode() était recalculé à chaque requête, y compris
+        pour des messages identiques (questions répétées, onboarding, etc.).
+        Retourne un tuple (hashable, immuable) plutôt qu'un ndarray pour que
+        lru_cache puisse comparer/stocker correctement les résultats.
+        maxsize=512 : borne la mémoire, les entrées les moins récentes sont évincées.
+        """
+        return tuple(self._embedding_model.encode(message).tolist())
+
     async def _call_agent_guide(self, message: str, langue: str, historique: list) -> dict:
         """
         Appel à l'agent guide historique (RAG pgvector + web search).
         """
         import os
-        query_embedding = self._embedding_model.encode(message).tolist()
+        query_embedding = list(self._encode_cached(message))
         session_ctx = {}  # profil Redis L1
 
         try:
@@ -884,7 +1070,12 @@ class OrchestratorAgent:
         # feedback_agent.enregistrer_feedback(user_id, circuit_id, note, commentaire)
 
         log.info("[FEEDBACK] TODO: AgentFeedback non encore connecté")
-        return {"disponible": False, "erreur": "feedback_non_connecte"}
+        return {
+            "disponible": False,
+            "response": None,
+            "error": "feedback_non_connecte",
+            "payload": {"_raw": {}},
+        }
 
     # ─────────────────────────────────────────────────────────────────────────
     # MODE GUIDE TERRAIN
@@ -1238,8 +1429,7 @@ Génère une présentation narrative vivante en {langue_nom}.
     async def _activer_mode_guide(
         self, user_id: str, message: str, profil: dict, historique: list, langue: str,
     ) -> str:
-        
-        
+
         """
         Confirme l'activation du mode guide GPS.
         Le frontend doit détecter ce flag (via /api/chat ou un futur endpoint dédié)
@@ -1254,14 +1444,14 @@ Génère une présentation narrative vivante en {langue_nom}.
         # Les transitions précédentes ont déjà désactivé les états incompatibles.
 
         if langue == "EN":
-             reponse_finale = (
+            reponse_finale = (
                 "GPS Guide mode activated! 📍 Please allow location access — "
                 "I'll tell you about each site as you approach it."
           )
         elif langue == "AR":
-              reponse_finale = "تم تفعيل وضع المرشد! 📍 يرجى السماح بالوصول لموقعك."
+            reponse_finale = "تم تفعيل وضع المرشد! 📍 يرجى السماح بالوصول لموقعك."
         else:
-             reponse_finale = (
+            reponse_finale = (
                  "Mode Guide GPS activé ! 📍 Autorisez l'accès à votre position — "
                  "je vous parlerai de chaque lieu à mesure que vous vous en approchez."
             )
@@ -1276,7 +1466,7 @@ Génère une présentation narrative vivante en {langue_nom}.
         self, circuits_data: dict, profil_collecte: dict, langue: str
     ) -> str:
         """Affiche les circuits comme l'agent circuit : cartes + description LLM."""
-        circuits = circuits_data.get("circuits", [])
+        circuits = self._circuits_raw(circuits_data).get("circuits", [])
         if not circuits:
             return FALLBACK_MESSAGES.get(langue, FALLBACK_MESSAGES["FR"])
 
@@ -1424,9 +1614,11 @@ Génère une présentation narrative vivante en {langue_nom}.
         lines = []
 
         # ── Météo ─────────────────────────────────────────────────────────────
+
         meteo = agents_responses.get("agent_meteo")
         if meteo and meteo.get("disponible"):
-            donnees = meteo.get("donnees_brutes", {})
+            meteo_raw = self._meteo_raw(meteo)
+            donnees = meteo_raw.get("donnees_brutes", {})
             alerte  = donnees.get("alerte", {})
             temp    = donnees.get("temperature")
             lines.append("[MÉTÉO]")
@@ -1434,13 +1626,14 @@ Génère une présentation narrative vivante en {langue_nom}.
                 lines.append(f"  Température : {temp}°C")
             lines.append(f"  Alerte : {alerte.get('level', 'VERT')}")
             lines.append(f"  Outdoor OK : {alerte.get('outdoor_ok', True)}")
-            if meteo.get("final_answer"):
-                lines.append(f"  Résumé : {meteo['final_answer'][:200]}")
+            if meteo_raw.get("final_answer"):
+                lines.append(f"  Résumé : {meteo_raw['final_answer'][:200]}")
 
         # ── Circuits ──────────────────────────────────────────────────────────
         circuits_data = agents_responses.get("agent_circuits")
         if circuits_data:
-            circuits = circuits_data.get("circuits", [])
+            circuits_raw = self._circuits_raw(circuits_data)
+            circuits = circuits_raw.get("circuits", [])
             disponible = circuits_data.get("disponible", False)
 
             tag = "[CIRCUITS RECOMMANDÉS]" if disponible else "[CIRCUITS PAR DÉFAUT]"
@@ -1484,7 +1677,7 @@ Génère une présentation narrative vivante en {langue_nom}.
                     lines.append(f"     Monuments : {', '.join(str(m) for m in monuments[:5])}")
 
             # Signaux manquants → le LLM doit poser la question naturellement
-            manquants = circuits_data.get("manquants", [])
+            manquants = circuits_raw.get("manquants", [])
             if manquants:
                 questions_map = {
                     "budget": "Quel est votre budget approximatif ?",

@@ -77,11 +77,11 @@ class AgentMeteoWrapper:
                 PREFIXES_A_PURGER = ("core", "memory", "tools", "observability")
                 to_delete = [k for k in sys.modules if any(k == p or k.startswith(p + ".") for p in PREFIXES_A_PURGER)]
                 for k in to_delete:
-                     del sys.modules[k]
+                    del sys.modules[k]
 
                 # Forcer weather_agent_v4 en tête de path
                 if PATH_WEATHER_AGENT not in sys.path:
-                     sys.path.insert(0, PATH_WEATHER_AGENT)
+                    sys.path.insert(0, PATH_WEATHER_AGENT)
 
                 from core.model_router import ModelRouter, TaskType
                 from core.agent import WeatherAgent as _WA
@@ -163,10 +163,15 @@ class AgentMeteoWrapper:
 
         return {
             "disponible": True,
-            "final_answer": final_answer,
-            "donnees_brutes": donnees_brutes,
-            "ville": ville,
-            "erreur": erreur,
+            "response": final_answer,
+            "error": erreur,
+            "payload": {
+                "_raw": {
+                    "final_answer": final_answer,
+                    "donnees_brutes": donnees_brutes,
+                    "ville": ville,
+                }
+            },
         }
 
     def _extract_raw_data(self, tool_results: list) -> dict:
@@ -227,14 +232,19 @@ class AgentMeteoWrapper:
         """Réponse de fallback quand WeatherAgent est indisponible."""
         return {
             "disponible": False,
-            "final_answer": "",
-            "donnees_brutes": {
-                "temperature": None,
-                "alerte": {"level": "VERT", "outdoor_ok": True, "message": ""},
-                "ville": "",
+            "response": "",
+            "error": erreur or "service_indisponible",
+            "payload": {
+                "_raw": {
+                    "final_answer": "",
+                    "donnees_brutes": {
+                        "temperature": None,
+                        "alerte": {"level": "VERT", "outdoor_ok": True, "message": ""},
+                        "ville": "",
+                    },
+                    "ville": "",
+                }
             },
-            "ville": "",
-            "erreur": erreur or "service_indisponible",
         }
 
     def get_outdoor_recommendation(self, donnees_brutes: dict, lieu: str = "") -> str:

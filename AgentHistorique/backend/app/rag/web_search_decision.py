@@ -70,6 +70,21 @@ WEB_SEARCH_META_PHRASES = (
     "sur internet",
     "sur le web",
     "en ligne",
+    # English equivalents
+    "search it on the web",
+    "search on the web",
+    "search on web",
+    "search on the internet",
+    "search on internet",
+    "search the web",
+    "search the internet",
+    "search online",
+    "look it up online",
+    "look up online",
+    "web search",
+    "on the web",
+    "on the internet",
+    "online search",
 )
 
 SUGGESTED_ACTION_PHRASES_TO_STRIP = all_suggested_action_phrases()
@@ -168,6 +183,11 @@ LOOKUP_INTENT_PREFIXES = (
     "recherche ",
     "trouver ",
     "retrouver ",
+    "search for ",
+    "search ",
+    "find ",
+    "look up ",
+    "lookup ",
 )
 
 VAGUE_FOLLOW_UP_PHRASES = (
@@ -180,6 +200,10 @@ VAGUE_FOLLOW_UP_PHRASES = (
     "là dessus",
     "la-dessus",
     "là-dessus",
+    "about it",
+    "related to it",
+    "for it",
+    "on it",
 )
 
 VAGUE_FOLLOW_UP_TOKENS = frozenset(
@@ -191,6 +215,9 @@ VAGUE_FOLLOW_UP_TOKENS = frozenset(
         "ceci",
         "sujet",
         "question",
+        "it",
+        "that",
+        "this",
     }
 )
 
@@ -210,6 +237,14 @@ DEMONSTRATIVE_MONUMENT_PHRASES = (
     "cet site",
     "cette site",
     "ce lieu",
+    "related to it",
+    "about it",
+    "for it",
+    "on it",
+    "this monument",
+    "that monument",
+    "this site",
+    "that site",
 )
 
 GENERIC_MONUMENT_PHRASES = (
@@ -239,6 +274,9 @@ DEMONSTRATIVE_SUBJECTS = frozenset(
         "ca",
         "monument",
         "le monument",
+        "it",
+        "that",
+        "this",
     }
 )
 
@@ -309,6 +347,9 @@ ART_CULTURE_QUERY_MARKERS = (
     "oeuvres",
     "artistique",
     "artistiques",
+    "artistic",
+    "artwork",
+    "artworks",
     "sculpture",
     "peinture",
     "exposition",
@@ -450,6 +491,14 @@ WEB_SEARCH_FILLER_TOKENS = frozenset(
         "moi",
         "svp",
         "stp",
+        "search",
+        "online",
+        "internet",
+        "related",
+        "about",
+        "for",
+        "the",
+        "it",
     }
 )
 
@@ -835,7 +884,7 @@ def _extract_subject_from_query(
     effective_query = resolve_query_for_context(user_query, context)
     working = _strip_web_meta_phrases(effective_query)
     match = re.search(
-        r"\b(?:sur|du|de la|de l|des|d|"
+        r"\b(?:sur|du|de la|de l|des|d|about|related to|for|"
         r"liees au|liées au|liee au|liée au|"
         r"liees a|liées à|liee a|liée à)\s+(.+)$",
         working,
@@ -1421,6 +1470,21 @@ def user_requests_web_search(user_query: str) -> bool:
     )
 
 
+def user_requests_art_web_lookup(
+    user_query: str,
+    memory_context: dict[str, Any] | None = None,
+) -> bool:
+    """English/French art lookup follow-ups that imply an online search."""
+    if not user_requests_lookup(user_query):
+        return False
+    if not is_art_or_culture_query(user_query, memory_context):
+        return False
+    context = memory_context or {}
+    return references_session_monument(user_query, context) or is_incomplete_lookup_follow_up(
+        user_query, context
+    )
+
+
 def is_domain_related_query(
     user_query: str,
     memory_context: dict[str, Any] | None = None,
@@ -1547,12 +1611,25 @@ def should_use_web_search(
     *,
     settings: Settings,
 ) -> bool:
-    explicit_request = user_requests_web_search(user_query)
+    explicit_request = user_requests_web_search(user_query) or user_requests_art_web_lookup(
+        user_query, memory_context
+    )
     if explicit_request:
         return True
 
     if not is_domain_related_query(user_query, memory_context):
         return False
+
+    local_irrelevant = not local_chunks_relevant_to_query(
+        user_query, retrieved_chunks, memory_context
+    )
+    insufficient = is_local_context_insufficient(
+        retrieved_chunks,
+        best_score,
+        min_relevance_score=settings.rag_min_score,
+    )
+    if insufficient or local_irrelevant:
+        return True
 
     if not settings.web_search_enabled:
         return False
@@ -1575,9 +1652,4 @@ def should_use_web_search(
     ):
         return True
 
-    insufficient = is_local_context_insufficient(
-        retrieved_chunks,
-        best_score,
-        min_relevance_score=settings.rag_min_score,
-    )
-    return insufficient
+    return False

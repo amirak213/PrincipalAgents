@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from copy import deepcopy
 from dataclasses import dataclass
 from decimal import Decimal
@@ -34,7 +33,7 @@ class ChunkDraft:
 class DocumentChunker:
     """Split generated documents into sized chunks while preserving metadata."""
 
-    def __init__(self, chunk_size: int = 1500, overlap: int = 150) -> None:
+    def __init__(self, chunk_size: int = 1500, overlap: int = 0) -> None:
         if chunk_size <= 0:
             raise ValueError("chunk_size must be positive")
         if overlap < 0:
@@ -64,11 +63,7 @@ class DocumentChunker:
                     "language": document.language,
                     "chunk_index": index,
                     "chunk_count": chunk_count,
-                    "chunk_role": (
-                        "full"
-                        if chunk_count == 1
-                        else ("header" if index == 0 else "body")
-                    ),
+                    "chunk_role": "full" if chunk_count == 1 else ("header" if index == 0 else "body"),
                 }
             )
             chunks.append(
@@ -121,42 +116,13 @@ class DocumentChunker:
 
         return segments
 
-    _HEADING_BREAK = re.compile(r"\n\n(?=[A-ZÀ-Ü][^\n]{0,80}\n)")
-
     def _find_split_point(self, text: str, start: int, end: int) -> int:
         window = text[start:end]
         min_split = max(int(len(window) * 0.5), 1)
 
-        # Priorité : rupture de section/titre d'abord (pour ne pas couper un
-        # chunk en plein milieu d'une section historique), puis paragraphe,
-        # puis phrase, puis clause. Le premier séparateur trouvé dans la
-        # bonne moitié de la fenêtre est utilisé.
-        for separator in (
-            self._HEADING_BREAK,
-            "\n\n",
-            "\n",
-            ". ",
-            "? ",
-            "! ",
-            "; ",
-        ):
-            position = self._rfind_separator(window, separator, min_split)
-            if position is not None:
-                return start + position
+        for separator in ("\n\n", "\n", ". "):
+            position = window.rfind(separator)
+            if position >= min_split:
+                return start + position + len(separator)
 
         return end
-
-    def _rfind_separator(
-        self, window: str, separator: str | re.Pattern[str], min_split: int
-    ) -> int | None:
-        if isinstance(separator, re.Pattern):
-            matches = list(separator.finditer(window))
-            for match in reversed(matches):
-                if match.start() >= min_split:
-                    return match.end()
-            return None
-
-        position = window.rfind(separator)
-        if position >= min_split:
-            return position + len(separator)
-        return None

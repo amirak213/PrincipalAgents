@@ -21,14 +21,26 @@ SHORT_VISIT_MAX_MINUTES = 15.0
 LONG_VISIT_ABSOLUTE_MIN_MINUTES = 45.0
 
 
-def monument_site_id(monument_id: Decimal) -> int:
-    """Integer part of ID_monument — groups sub-monuments (e.g. 3.9 → site 3)."""
-    return int(monument_id)
+def monument_site_id(monument_id: str) -> int:
+    """Integer part of id_monument — groups sub-monuments (e.g. 3.9 → site 3)."""
+    try:
+        return int(float(monument_id))
+    except ValueError:
+        return 0
 
 
-def is_site_root_monument(monument_id: Decimal) -> bool:
+def is_site_root_monument(monument_id: str) -> bool:
     """True when the row represents the parent site (e.g. 3.00), not a sub-point (3.9)."""
-    return monument_id == Decimal(monument_site_id(monument_id))
+    try:
+        numeric = float(monument_id)
+        return numeric == int(numeric)
+    except ValueError:
+        return True
+
+
+def monument_source_id(monument_id: str) -> str:
+    """Preserve monument ids as strings for RAG chunk source_id storage."""
+    return str(monument_id)
 
 
 def build_site_titles(monuments: list[Monument]) -> dict[int, str]:
@@ -351,7 +363,7 @@ def build_monument_document(
 
     return GeneratedDocument(
         source_type="monument",
-        source_id=monument.id,
+        source_id=monument_source_id(monument.id),
         title=monument.name_fr,
         language="fr",
         text="\n".join(lines),
@@ -376,7 +388,7 @@ def build_circuit_document(circuit: Circuit) -> GeneratedDocument:
         for link in circuit.monument_links:
             monument = link.monument
             monument_names.append(monument.name_fr)
-            monument_ids.append(float(monument.id))
+            monument_ids.append(monument.id)
             site_ids.add(monument_site_id(monument.id))
             period = _clean(monument.dominant_period)
             if period:
@@ -403,7 +415,7 @@ def build_circuit_document(circuit: Circuit) -> GeneratedDocument:
 
     return GeneratedDocument(
         source_type="circuit",
-        source_id=Decimal(circuit.id),
+        source_id=str(circuit.id),
         title=circuit.name,
         language="fr",
         text="\n".join(lines),
@@ -424,7 +436,7 @@ def build_all_documents(session: Session) -> list[GeneratedDocument]:
     visit_context = build_visit_duration_context(monuments)
     site_titles = build_site_titles(monuments)
 
-    circuit_names_by_monument: dict[Decimal, list[str]] = {}
+    circuit_names_by_monument: dict[str, list[str]] = {}
     for circuit in circuits:
         for link in circuit.monument_links:
             circuit_names_by_monument.setdefault(link.monument_id, []).append(circuit.name)
@@ -455,7 +467,7 @@ def load_documents_from_json(path: Path) -> list[GeneratedDocument]:
         documents.append(
             GeneratedDocument(
                 source_type=str(item["source_type"]),
-                source_id=Decimal(str(item["source_id"])),
+                source_id=str(item["source_id"]),
                 title=str(item["title"]),
                 language=str(item.get("language", "fr")),
                 text=str(item["text"]),
@@ -469,7 +481,7 @@ def save_documents_to_json(documents: list[GeneratedDocument], path: Path) -> No
     payload = [
         {
             "source_type": document.source_type,
-            "source_id": float(document.source_id),
+            "source_id": document.source_id,
             "title": document.title,
             "language": document.language,
             "text": document.text,

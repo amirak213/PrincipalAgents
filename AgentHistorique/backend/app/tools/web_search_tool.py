@@ -5,8 +5,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import httpx
-from collections.abc import Mapping, Sequence
-from app.rag.injection_guard import sanitize_external_text
 
 if TYPE_CHECKING:
     from app.config import Settings
@@ -162,13 +160,9 @@ class TavilySearchTool(BaseWebSearchTool):
         for item in raw_results:
             if not isinstance(item, dict):
                 continue
-            title = sanitize_external_text(
-                str(item.get("title") or "").strip(), max_length=200
-            )
+            title = str(item.get("title") or "").strip()
             url = str(item.get("url") or "").strip()
-            snippet = sanitize_external_text(
-                str(item.get("content") or item.get("snippet") or "").strip()
-            )
+            snippet = str(item.get("content") or item.get("snippet") or "").strip()
             if not title and not url and not snippet:
                 continue
             results.append(
@@ -190,19 +184,15 @@ def _region_to_tavily_country(region: str | None) -> str | None:
 
 
 def _map_generic_results(
-    raw_results: Sequence[Mapping[str, object]],
+    raw_results: list[dict[str, object]],
     *,
     source: str,
 ) -> list[WebSearchResult]:
     results: list[WebSearchResult] = []
     for item in raw_results or []:
-        title = sanitize_external_text(
-            str(item.get("title") or "").strip(), max_length=200
-        )
+        title = str(item.get("title") or "").strip()
         url = str(item.get("href") or item.get("url") or "").strip()
-        snippet = sanitize_external_text(
-            str(item.get("body") or item.get("snippet") or "").strip()
-        )
+        snippet = str(item.get("body") or item.get("snippet") or "").strip()
         if not title and not url and not snippet:
             continue
         results.append(

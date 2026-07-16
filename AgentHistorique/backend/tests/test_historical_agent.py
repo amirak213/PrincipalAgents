@@ -63,7 +63,7 @@ def test_historical_agent_returns_sources_and_calls_retriever() -> None:
     assert result.memory_updates["primary_site_id"] == 3
 
 
-def test_historical_agent_insufficient_context_skips_llm() -> None:
+def test_historical_agent_insufficient_context_tries_web_then_not_found() -> None:
     class LowScoreRetriever:
         def retrieve(
             self,
@@ -83,17 +83,28 @@ def test_historical_agent_insufficient_context_skips_llm() -> None:
                 }
             ]
 
+    class EmptyWebSearchTool(BaseWebSearchTool):
+        def search(
+            self,
+            query: str,
+            max_results: int = 3,
+            *,
+            region: str | None = None,
+        ) -> list[WebSearchResult]:
+            return []
+
     llm = MockLLMClient(response="Ne doit pas être utilisé.")
     agent = HistoricalAgent(
         MagicMock(),
         retriever=LowScoreRetriever(),
         llm=llm,
         settings=Settings(llm_provider="mock", rag_min_score=0.65),
+        web_search_tool=EmptyWebSearchTool(),
     )
 
     result = agent.answer(user_message="Question sans contexte")
 
-    assert "informations suffisantes" in result.answer.lower()
+    assert "pas trouvé" in result.answer.lower()
     assert len(result.sources) == 1
 
 
@@ -356,7 +367,8 @@ def test_historical_agent_returns_no_art_message_when_web_only_tourism() -> None
         memory_context=memory,
     )
 
-    assert "base locale ni en ligne" in result.answer.lower()
+    assert "pas trouvé" in result.answer.lower()
+    assert "œuvres artistiques" in result.answer.lower()
     assert "Ne doit pas" not in result.answer
     assert not any(
         source.source_type == "web"
@@ -427,8 +439,18 @@ def test_historical_agent_calls_web_search_for_explicit_request_when_disabled() 
     assert len(web_tool.calls) >= 1
 
 
-def test_historical_agent_does_not_call_web_search_when_disabled() -> None:
-    web_tool = MockWebSearchTool()
+def test_historical_agent_still_calls_web_search_when_disabled_but_local_insufficient() -> None:
+    class EmptyWebSearchTool(BaseWebSearchTool):
+        def search(
+            self,
+            query: str,
+            max_results: int = 3,
+            *,
+            region: str | None = None,
+        ) -> list[WebSearchResult]:
+            return []
+
+    web_tool = EmptyWebSearchTool()
     llm = MockLLMClient(response="Ne doit pas être utilisé.")
     agent = HistoricalAgent(
         MagicMock(),
@@ -446,8 +468,7 @@ def test_historical_agent_does_not_call_web_search_when_disabled() -> None:
         user_message="Donne-moi plus de détails historiques sur Byrsa",
     )
 
-    assert web_tool.calls == []
-    assert "informations suffisantes" in result.answer.lower()
+    assert "pas trouvé" in result.answer.lower()
 
 
 def test_historical_agent_web_search_failure_does_not_crash() -> None:
@@ -478,7 +499,7 @@ def test_historical_agent_web_search_failure_does_not_crash() -> None:
         user_message="Donne-moi plus de détails historiques sur Byrsa",
     )
 
-    assert result.answer == "Réponse locale de secours."
+    assert "pas trouvé" in result.answer.lower()
     assert len(result.sources) == 1
     assert result.sources[0].source_type == "monument"
 
