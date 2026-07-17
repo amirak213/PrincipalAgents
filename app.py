@@ -210,7 +210,7 @@ class CircuitRecommendResponse(BaseModel):
     feasible: bool
 
 # --- Logique métier et Cache ---
-MONUMENTS_CACHE = []
+
 CIRCUITS_CACHE = []
 PERTINENCE_CALC = None
 
@@ -349,14 +349,27 @@ def _build_wizard_ui(wizard) -> Optional[WizardUI]:
 
     question = question_for_state(state, lang="FR")
 
+    if state == WizardState.CITY_SELECTION:
+        return WizardUI(
+            state=state_value,
+            question=question,
+            input_type="single_select",
+            options=[
+                WizardOption(value="carthage", label="Carthage"),
+                WizardOption(value="la_marsa", label="La Marsa"),
+            ],
+        )
+
     if state == WizardState.CIRCUIT_ADJUSTMENT:
         return WizardUI(
             state=state_value,
             question=question,
             input_type="single_select",
             options=[
-                WizardOption(value="retry_budget", label="Ajuster le budget"),
-                WizardOption(value="retry_dates", label="Ajuster les dates"),
+                WizardOption(value="budget", label="Ajuster le budget"),
+                WizardOption(value="mobility", label="Ajuster le mode de déplacement"),
+                WizardOption(value="dates", label="Ajuster les dates"),
+                WizardOption(value="places", label="Ajuster les lieux"),
             ],
         )
 
@@ -402,7 +415,6 @@ def _build_wizard_ui(wizard) -> Optional[WizardUI]:
         )
 
     if state == WizardState.CIRCUIT_REVIEW:
-        # TODO: ajouter l'option d'ajustement une fois l'event CIRCUIT_ADJUSTMENT confirmé/testé
         circuit = wizard.circuit_result or {}
         budget_ok = circuit.get("budget_ok")
         budget_warning = None
@@ -416,7 +428,8 @@ def _build_wizard_ui(wizard) -> Optional[WizardUI]:
             question=question,
             input_type="confirm",
             options=[
-                WizardOption(value="confirm_circuit", label="Confirmer ce circuit")
+                WizardOption(value="confirm_circuit", label="Confirmer ce circuit"),
+                WizardOption(value="adjust_circuit", label="Ajuster ce circuit"),
             ],
             budget_ok=budget_ok,
             budget_warning=budget_warning,

@@ -1,0 +1,67 @@
+.wizard-card {
+  margin-top: 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--dourbia-border);
+}
+
+.wizard-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wizard-disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.wizard-multi-select,
+.wizard-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wizard-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.wizard-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.wizard-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.wizard-input {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  min-height: var(--control-height);
+  background: var(--color-surface);
+  color: var(--dourbia-navy);
+}
+
+.wizard-input:focus {
+  outline: none;
+  border-color: var(--dourbia-cyan-deep);
+}
+
+.wizard-warning {
+  margin: 0 0 4px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, #d97706 15%, transparent);
+  color: #92400e;
+  font-size: 0.85rem;
+}

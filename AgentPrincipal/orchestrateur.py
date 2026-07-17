@@ -57,7 +57,7 @@ from constants import (
     HISTORIQUE_KEYWORDS_EN,
     HISTORIQUE_KEYWORDS_AR,
 )
-from AgentPrincipal.session_memory import (
+from session_memory import (
     get_history,
     set_history,
     get_profile,
@@ -408,8 +408,21 @@ class OrchestratorAgent:
                 and is_affirmation_circuit(message)
             )
             if veut_circuit:
-                return await self._start_onboarding(user_id, message, profil, historique, langue)
-
+                wizard = start_wizard(user_id)
+                await wizard_store.save(wizard)
+                reponse_finale = question_for_state(wizard.state, langue)
+                await self._update_memory(
+                    user_id=user_id,
+                    message=message,
+                    reponse=reponse_finale,
+                    signaux={"wizard_state": wizard.state.value},
+                    langue=langue,
+                    intention="WIZARD",
+                    historique=historique,
+                    profil=profil,
+                )
+                return reponse_finale
+            
             # ── ÉTAPE 5 : Routing et appels agents ────────────────────────
             agents_responses = await self._route_to_agents(
                 intention=intention,
