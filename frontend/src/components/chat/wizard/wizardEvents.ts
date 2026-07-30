@@ -11,8 +11,10 @@ const STATE_ACTION_TYPE: Record<string, string> = {
   PLACE_SELECTION: "select_places",
   CUSTOMIZATION_BUDGET: "set_budget",
   CUSTOMIZATION_MOBILITY: "set_mobility",
+  CUSTOMIZATION_PREFERENCES: "set_preferences",
   CUSTOMIZATION_DATES: "set_dates",
   CIRCUIT_ADJUSTMENT: "adjust_circuit",
+  GUIDE_MODE_READY: "confirm_guide_mode",
 };
 
 /**
@@ -26,6 +28,9 @@ export function buildWizardAction(
   state: string,
   optionValue: string | string[] | Record<string, unknown>,
 ): WizardAction {
+  if (state === "PLACE_SELECTION" && optionValue === "load_more") {
+    return { type: "load_more_places" };
+  }
   if (STATES_WITH_SELF_DESCRIBING_OPTIONS.has(state)) {
     return { type: optionValue as string };
   }

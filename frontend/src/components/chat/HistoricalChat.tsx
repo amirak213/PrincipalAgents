@@ -1,6 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatSession, SourceRef } from "../../types";
 import ChatCore from "./ChatCore";
+import CircuitMapPanel from "./CircuitMapPanel";
+import { useWorkspace } from "../../context/WorkspaceContext";
 
 interface HistoricalChatProps {
   variant: "floating" | "docked";
@@ -21,6 +23,7 @@ interface HistoricalChatProps {
       memory?: ChatSession["messages"][number]["memory"];
       actions?: string[];
       wizard?: ChatSession["messages"][number]["wizard"];
+      packs?: ChatSession["messages"][number]["packs"];
       elapsedMs?: number;
       latencyMs?: number;
       latencyDebug?: ChatSession["messages"][number]["latencyDebug"];
@@ -43,6 +46,24 @@ export default function HistoricalChat({
   onSourcesReceived,
 }: HistoricalChatProps) {
   const widgetRef = useRef<HTMLElement>(null);
+  const { activeCircuit, setActiveCircuit } = useWorkspace();
+
+  // Responsive: true quand < 768px → carte repliée sous le chat
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 768,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  // Réinitialise la carte au nouveau chat
+  function handleNewChat() {
+    setActiveCircuit(null);
+    onNewChat();
+  }
 
   useEffect(() => {
     if (variant !== "floating") return;
@@ -64,17 +85,34 @@ export default function HistoricalChat({
             <p>Réponses sourcées sur le patrimoine de Carthage</p>
           </div>
         </header>
-        <ChatCore
-          chat={chat}
-          chats={chats}
-          activeChatId={activeChatId}
-          onNewChat={onNewChat}
-          onSelectChat={onSelectChat}
-          onDeleteChat={onDeleteChat}
-          onEnsureChat={onEnsureChat}
-          onAppendMessage={onAppendMessage}
-          onSourcesReceived={onSourcesReceived}
-        />
+        <div
+          className={`circuit-layout${
+            activeCircuit && !isMobile ? " circuit-layout--split" : ""
+          }`}
+        >
+          <div className="circuit-layout-chat">
+            <ChatCore
+              chat={chat}
+              chats={chats}
+              activeChatId={activeChatId}
+              onNewChat={handleNewChat}
+              onSelectChat={onSelectChat}
+              onDeleteChat={onDeleteChat}
+              onEnsureChat={onEnsureChat}
+              onAppendMessage={onAppendMessage}
+              onSourcesReceived={onSourcesReceived}
+            />
+          </div>
+          {activeCircuit && (
+            <div
+              className={`circuit-layout-map${
+                isMobile ? " circuit-layout-map--below" : ""
+              }`}
+            >
+              <CircuitMapPanel />
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -82,7 +120,7 @@ export default function HistoricalChat({
   return (
     <section
       ref={widgetRef}
-      className="chat-widget"
+      className={`chat-widget${activeCircuit ? " chat-widget--expanded" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Dourbia Guide"
@@ -102,17 +140,34 @@ export default function HistoricalChat({
           ×
         </button>
       </header>
-      <ChatCore
-        chat={chat}
-        chats={chats}
-        activeChatId={activeChatId}
-        onNewChat={onNewChat}
-        onSelectChat={onSelectChat}
-        onDeleteChat={onDeleteChat}
-        onEnsureChat={onEnsureChat}
-        onAppendMessage={onAppendMessage}
-        onSourcesReceived={onSourcesReceived}
-      />
+      <div
+        className={`circuit-layout${
+          activeCircuit && !isMobile ? " circuit-layout--split" : ""
+        }`}
+      >
+        <div className="circuit-layout-chat">
+          <ChatCore
+            chat={chat}
+            chats={chats}
+            activeChatId={activeChatId}
+            onNewChat={handleNewChat}
+            onSelectChat={onSelectChat}
+            onDeleteChat={onDeleteChat}
+            onEnsureChat={onEnsureChat}
+            onAppendMessage={onAppendMessage}
+            onSourcesReceived={onSourcesReceived}
+          />
+        </div>
+        {activeCircuit && (
+          <div
+            className={`circuit-layout-map${
+              isMobile ? " circuit-layout-map--below" : ""
+            }`}
+          >
+            <CircuitMapPanel />
+          </div>
+        )}
+      </div>
     </section>
   );
 }

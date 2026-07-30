@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { sendChatMessage } from "../../api/chat";
 import { useWorkspace } from "../../context/WorkspaceContext";
 import type { ChatSession, SourceRef, WizardAction } from "../../types";
@@ -23,6 +23,7 @@ interface ChatCoreProps {
       memory?: ChatSession["messages"][number]["memory"];
       actions?: string[];
       wizard?: ChatSession["messages"][number]["wizard"];
+      packs?: ChatSession["messages"][number]["packs"];
       elapsedMs?: number;
       latencyMs?: number;
       latencyDebug?: ChatSession["messages"][number]["latencyDebug"];
@@ -53,65 +54,81 @@ export default function ChatCore({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { selectedMonument, pendingGuideQuestion, setPendingGuideQuestion } = useWorkspace();
 
-  useEffect(() => {
-    if (autoFocus) {
-      inputRef.current?.focus();
-    }
-  }, [autoFocus]);
+  const dispatchToBackend = useCallback(
+    async (
+      userDisplayText: string,
+      message: string,
+      action?: WizardAction,
+    ) => {
+      if (loading) return;
+
+      const chatId = chat?.id ?? onEnsureChat();
+      setInput("");
+      setError(null);
+      setLoading(true);
+      onAppendMessage(chatId, { role: "user", content: userDisplayText });
+
+      try {
+        const data = await sendChatMessage(chatId, message, "auto", action);
+        window.sessionStorage.setItem("chat-session-id", data.session_id);
+        onAppendMessage(chatId, {
+          role: "assistant",
+          content: data.answer,
+          sources: data.sources,
+          memory: data.memory_context,
+          actions: data.suggested_actions,
+          wizard: data.wizard_ui ?? undefined,
+          packs: data.packs ?? undefined,
+          elapsedMs: data.clientElapsedMs,
+          latencyMs: data.latency_ms ?? undefined,
+          latencyDebug: data.latency_debug ?? undefined,
+        });
+        if (data.sources.length > 0) {
+          onSourcesReceived?.(data.sources);
+        }
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Impossible d'obtenir une réponse pour le moment. Réessayez.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      chat,
+      onEnsureChat,
+      setInput,
+      setError,
+      setLoading,
+      onAppendMessage,
+      onSourcesReceived,
+      loading,
+    ],
+  );
+
+  const sendUserMessage = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      await dispatchToBackend(trimmed, trimmed);
+    },
+    [dispatchToBackend],
+  );
 
   useEffect(() => {
     if (!pendingGuideQuestion || loading) return;
     const question = pendingGuideQuestion;
     setPendingGuideQuestion(null);
     void sendUserMessage(question);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingGuideQuestion, loading, setPendingGuideQuestion]);
+  }, [pendingGuideQuestion, loading, setPendingGuideQuestion, sendUserMessage]);
 
-  async function dispatchToBackend(
-    userDisplayText: string,
-    message: string,
-    action?: WizardAction,
-  ) {
-    if (loading) return;
-
-    const chatId = chat?.id ?? onEnsureChat();
-    setInput("");
-    setError(null);
-    setLoading(true);
-    onAppendMessage(chatId, { role: "user", content: userDisplayText });
-
-    try {
-      const data = await sendChatMessage(chatId, message, "auto", action);
-      onAppendMessage(chatId, {
-        role: "assistant",
-        content: data.answer,
-        sources: data.sources,
-        memory: data.memory_context,
-        actions: data.suggested_actions,
-        wizard: data.wizard_ui ?? undefined,
-        elapsedMs: data.clientElapsedMs,
-        latencyMs: data.latency_ms ?? undefined,
-        latencyDebug: data.latency_debug ?? undefined,
-      });
-      if (data.sources.length > 0) {
-        onSourcesReceived?.(data.sources);
-      }
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Impossible d'obtenir une réponse pour le moment. Réessayez.",
-      );
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (autoFocus) {
+      inputRef.current?.focus();
     }
-  }
-
-  async function sendUserMessage(text: string) {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    await dispatchToBackend(trimmed, trimmed);
-  }
+  }, [autoFocus]);
 
   async function sendWizardAction(action: WizardAction, label: string) {
     // message vide : le backend accepte action seule (voir ChatRequest côté Dourbia)

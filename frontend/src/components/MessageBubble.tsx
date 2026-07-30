@@ -3,6 +3,7 @@ import { DEBUG_MEMORY } from "../config";
 import type { Message, WizardAction } from "../types";
 import SourceList from "./SourceList";
 import WizardRenderer from "./chat/wizard/WizardRenderer";
+import PackCardGrid from "./PackCardGrid";
 
 interface MessageBubbleProps {
   message: Message;
@@ -72,6 +73,10 @@ export default function MessageBubble({
             interactive={isLatest}
             onAnswer={(action, label) => onWizardAnswer?.(action, label)}
           />
+        )}
+
+        {!isUser && message.packs && message.packs.length > 0 && (
+          <PackCardGrid packs={message.packs} />
         )}
 
         {!isUser && hasSources && <SourceList sources={message.sources!} />}

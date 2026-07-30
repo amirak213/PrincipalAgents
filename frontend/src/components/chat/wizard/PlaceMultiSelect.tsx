@@ -8,6 +8,7 @@ interface PlaceMultiSelectProps {
   hasMore: boolean;
   interactive: boolean;
   onSubmit: (selected: WizardOption[]) => void;
+  onLoadMore?: () => void;
 }
 
 export default function PlaceMultiSelect({
@@ -15,6 +16,7 @@ export default function PlaceMultiSelect({
   hasMore,
   interactive,
   onSubmit,
+  onLoadMore,
 }: PlaceMultiSelectProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -49,7 +51,14 @@ export default function PlaceMultiSelect({
         ))}
       </div>
       {hasMore && (
-        <p className="wizard-hint">D'autres lieux populaires existent — vous pourrez en ajouter plus tard.</p>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
+          <p className="wizard-hint">D'autres lieux populaires existent — vous pouvez en afficher davantage.</p>
+          {interactive && onLoadMore && (
+            <Button variant="secondary" compact onClick={onLoadMore}>
+              Voir plus
+            </Button>
+          )}
+        </div>
       )}
       {interactive && (
         <Button

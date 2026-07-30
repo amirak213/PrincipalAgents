@@ -3,23 +3,23 @@ import Button from "../../ui/Button";
 
 interface DateFormProps {
   interactive: boolean;
-  onSubmit: (value: { date: string; duration_hours: number }, label: string) => void;
+  onSubmit: (value: { date: string; start_time: string; end_time: string }, label: string) => void;
 }
 
 const today = new Date().toISOString().slice(0, 10);
 
 export default function DateForm({ interactive, onSubmit }: DateFormProps) {
   const [date, setDate] = useState(today);
-  const [durationHours, setDurationHours] = useState("3");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("12:00");
 
-  const durationNumber = Number(durationHours);
-  const canSubmit = Boolean(date) && durationNumber > 0;
+  const canSubmit = Boolean(date) && Boolean(startTime) && Boolean(endTime) && startTime < endTime;
 
   function handleSubmit() {
     if (!canSubmit) return;
     onSubmit(
-      { date, duration_hours: durationNumber },
-      `${date} · ${durationNumber}h`,
+      { date, start_time: startTime, end_time: endTime },
+      `${date} · ${startTime} - ${endTime}`,
     );
   }
 
@@ -38,15 +38,23 @@ export default function DateForm({ interactive, onSubmit }: DateFormProps) {
           />
         </label>
         <label className="wizard-field">
-          <span>Durée (heures)</span>
+          <span>Début</span>
           <input
-            type="number"
-            min={1}
-            max={12}
+            type="time"
             className="wizard-input"
-            value={durationHours}
+            value={startTime}
             disabled={!interactive}
-            onChange={(event) => setDurationHours(event.target.value)}
+            onChange={(event) => setStartTime(event.target.value)}
+          />
+        </label>
+        <label className="wizard-field">
+          <span>Fin</span>
+          <input
+            type="time"
+            className="wizard-input"
+            value={endTime}
+            disabled={!interactive}
+            onChange={(event) => setEndTime(event.target.value)}
           />
         </label>
       </div>

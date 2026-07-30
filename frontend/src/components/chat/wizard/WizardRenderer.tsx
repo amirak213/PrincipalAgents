@@ -5,6 +5,7 @@ import SingleSelectCards from "./SingleSelectCards";
 import PlaceMultiSelect from "./PlaceMultiSelect";
 import BudgetForm from "./BudgetForm";
 import DateForm from "./DateForm";
+import PreferencesForm from "./PreferencesForm";
 import ConfirmCard from "./ConfirmCard";
 
 interface WizardRendererProps {
@@ -12,16 +13,16 @@ interface WizardRendererProps {
   /** false une fois que cette card n'est plus le dernier message (déjà répondue) */
   interactive: boolean;
   /** action structurée + libellé lisible à afficher comme "message utilisateur" */
-  onAnswer: (action: ReturnType<typeof buildWizardAction>, label: string) => void;
+  onAnswer: (action: ReturnType<typeof buildWizardAction>, label: string) => void | Promise<void>;
 }
 
 export default function WizardRenderer({ wizard, interactive, onAnswer }: WizardRendererProps) {
   function submitOption(option: WizardOption) {
-    onAnswer(buildWizardAction(wizard.state, option.value), option.label);
+    return onAnswer(buildWizardAction(wizard.state, option.value), option.label);
   }
 
   function submitPlaces(options: WizardOption[]) {
-    onAnswer(
+    return onAnswer(
       buildWizardAction(
         wizard.state,
         options.map((option) => option.value),
@@ -30,8 +31,12 @@ export default function WizardRenderer({ wizard, interactive, onAnswer }: Wizard
     );
   }
 
+  function submitLoadMore() {
+    return onAnswer(buildWizardAction(wizard.state, "load_more"), "Voir plus");
+  }
+
   function submitStructured(value: Record<string, unknown>, label: string) {
-    onAnswer(buildWizardAction(wizard.state, value), label);
+    return onAnswer(buildWizardAction(wizard.state, value), label);
   }
 
   return (
@@ -50,6 +55,7 @@ export default function WizardRenderer({ wizard, interactive, onAnswer }: Wizard
           hasMore={wizard.has_more}
           interactive={interactive}
           onSubmit={submitPlaces}
+          onLoadMore={submitLoadMore}
         />
       )}
 
@@ -65,11 +71,20 @@ export default function WizardRenderer({ wizard, interactive, onAnswer }: Wizard
         <DateForm interactive={interactive} onSubmit={submitStructured} />
       )}
 
+      {wizard.input_type === "preferences_form" && (
+        <PreferencesForm
+          options={wizard.options}
+          interactive={interactive}
+          onSubmit={submitStructured}
+        />
+      )}
+
       {wizard.input_type === "confirm" && (
         <ConfirmCard
           options={wizard.options}
           budgetOk={wizard.budget_ok}
           budgetWarning={wizard.budget_warning}
+          circuit={wizard.circuit}
           interactive={interactive}
           onSelect={submitOption}
         />

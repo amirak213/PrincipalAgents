@@ -8,6 +8,7 @@ import {
 } from "react";
 import type { MonumentSummary } from "../types/monument";
 import { appendHistoricalContext } from "../components/map/mapVisibility";
+import type { WizardCircuitSummary } from "../types";
 
 export type PanelMode = "explorer" | "guide" | "circuit";
 export type ChatDisplayMode = "floating" | "docked" | "hidden";
@@ -30,6 +31,10 @@ interface WorkspaceContextValue {
   pendingGuideQuestion: string | null;
   setPendingGuideQuestion: (question: string | null) => void;
   openGuideWithQuestion: (question: string, monument?: MonumentSummary | null) => void;
+  activeCircuit: WizardCircuitSummary | null;
+  setActiveCircuit: (circuit: WizardCircuitSummary | null) => void;
+  guideEnabled: boolean;
+  setGuideEnabled: (enabled: boolean) => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
@@ -42,6 +47,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [showAllOnMap, setShowAllOnMap] = useState(false);
   const [chatDisplayMode, setChatDisplayMode] = useState<ChatDisplayMode>("hidden");
   const [pendingGuideQuestion, setPendingGuideQuestion] = useState<string | null>(null);
+  const [activeCircuit, setActiveCircuit] = useState<WizardCircuitSummary | null>(null);
+  const [guideEnabled, setGuideEnabled] = useState(false);
 
   const pushHistoricalContext = useCallback((ids: number[]) => {
     if (ids.length === 0) return;
@@ -86,6 +93,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       pendingGuideQuestion,
       setPendingGuideQuestion,
       openGuideWithQuestion,
+      activeCircuit,
+      setActiveCircuit,
+      guideEnabled,
+      setGuideEnabled,
     }),
     [
       panelMode,
@@ -98,6 +109,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       chatDisplayMode,
       pendingGuideQuestion,
       openGuideWithQuestion,
+      activeCircuit,
+      guideEnabled,
     ],
   );
 

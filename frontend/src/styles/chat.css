@@ -76,6 +76,18 @@
   border: 1px solid rgba(255, 255, 255, 0.95);
 }
 
+/* Expanded : s'active dès qu'un circuit est actif (split chat + carte) */
+.chat-widget--expanded {
+  width: min(900px, 95vw);
+  height: min(700px, 90dvh);
+  max-height: min(700px, 90dvh);
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+
 .chat-core .chat-scroll {
   scrollbar-width: thin;
   scrollbar-color: rgba(90, 98, 120, 0.35) transparent;
@@ -478,7 +490,7 @@
   font-size: 0.74rem;
 }
 
-.details-panel section + section.details-section-spaced {
+.details-panel section+section.details-section-spaced {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--dourbia-border);
@@ -700,6 +712,47 @@
   flex-shrink: 0;
 }
 
+/* ── Circuit layout : deux colonnes chat + carte ─────────────────────── */
+.circuit-layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.circuit-layout--split {
+  flex-direction: row;
+}
+
+.circuit-layout-chat {
+  flex: 2 1 60%;
+  min-width: 320px;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.circuit-layout-map {
+  flex: 1 1 40%;
+  min-width: 400px;
+  max-width: 640px;
+  min-height: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--dourbia-border, #e2e8f0);
+}
+
+/* Mobile : carte repliée EN DESSOUS du chat */
+.circuit-layout-map--below {
+  min-width: 0;
+  max-width: none;
+  min-height: 300px;
+  max-height: 40vh;
+  border-left: none;
+  border-top: 1px solid var(--dourbia-border, #e2e8f0);
+}
+
 @media (max-width: 560px) {
   .chat-widget {
     bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
@@ -733,5 +786,14 @@
 
   .chat-core .composer-hint {
     display: none;
+  }
+}
+
+/* Mobile : widget élargi avec carte repliée en dessous du chat */
+@media (max-width: 767px) {
+  .chat-widget--expanded {
+    width: 95vw;
+    height: 90dvh;
+    max-height: 90dvh;
   }
 }

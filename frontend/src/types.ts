@@ -1,3 +1,4 @@
+import type { MapRoutePayload } from "./types/circuit";
 export interface SourceRef {
   source_type: string;
   source_id: number | null;
@@ -32,12 +33,31 @@ export type WizardInputType =
   | "multi_select"
   | "budget_form"
   | "date_form"
+  | "preferences_form"
   | "confirm";
 
 export interface WizardOption {
   value: string;
   label: string;
   meta?: Record<string, unknown> | null;
+}
+
+export interface WizardCircuitStop {
+  order: number;
+  name: string;
+  visit_duration_min: number;
+  price: number;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
+export interface WizardCircuitSummary {
+  title: string;
+  summary: string;
+  monuments: WizardCircuitStop[];
+  total_duration_min: number;
+  total_price: number;
+  route?: MapRoutePayload;
 }
 
 export interface WizardUI {
@@ -48,12 +68,24 @@ export interface WizardUI {
   has_more: boolean;
   budget_ok?: boolean | null;
   budget_warning?: string | null;
+  circuit?: WizardCircuitSummary | null;
 }
 
 /** Payload envoyé au backend en réponse à une card du wizard. */
 export interface WizardAction {
   type: string;
   value?: unknown;
+}
+
+export interface PackCard {
+  code?: string | null;
+  title: string;
+  emoji: string;
+  description?: string | null;
+  duration?: string | null;
+  capacity?: number | null;
+  audience?: string | null;
+  location?: string | null;
 }
 
 export interface ChatResponse {
@@ -65,6 +97,7 @@ export interface ChatResponse {
   latency_ms?: number | null;
   latency_debug?: LatencyDebug | null;
   wizard_ui?: WizardUI | null;
+  packs?: PackCard[] | null;
 }
 
 export interface Message {
@@ -75,6 +108,7 @@ export interface Message {
   memory?: MemoryContext;
   actions?: string[];
   wizard?: WizardUI | null;
+  packs?: PackCard[] | null;
   elapsedMs?: number;
   latencyMs?: number;
   latencyDebug?: LatencyDebug;
