@@ -6,7 +6,7 @@ Pipeline complet :
 2. Extraction signaux (regex, sans LLM)
 3. Classification intention (LLM rapide)
 4. Routing vers agents compétents
-5. Collecte réponses agents 
+5. Collecte réponses agents
 6. Synthèse narrative finale (LLM puissant)
 7. Mise à jour mémoire
 
@@ -57,7 +57,7 @@ from constants import (
     HISTORIQUE_KEYWORDS_EN,
     HISTORIQUE_KEYWORDS_AR,
 )
-from session_memory import (
+from AgentPrincipal.session_memory import (
     get_history,
     set_history,
     get_profile,
@@ -77,11 +77,25 @@ from profil_synthetique import ProfilSynthetique
 import onboarding
 from circuit_presentation import presenter_recommandations
 import os
+from sentence_transformers import SentenceTransformer
 import sys
+from wizard_state_machine import start_wizard, question_for_state, WizardStore
+
 _chatbot_path = os.path.dirname(os.path.abspath(__file__))
 _tools_path = os.path.join(_chatbot_path, "tools")
+_agenthistorique_backend_path = os.path.join(
+    _chatbot_path, "..", "AgentHistorique", "backend"
+)
+_agenthistorique_backend_path = os.path.abspath(_agenthistorique_backend_path)
+if _agenthistorique_backend_path not in sys.path:
+    sys.path.insert(0, _agenthistorique_backend_path)
+
 if _tools_path not in sys.path:
     sys.path.insert(0, _tools_path)
+
+_project_root = os.path.abspath(os.path.join(_chatbot_path, ".."))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 from packs_tool import (  # type: ignore[import]
     is_packs_request,
     get_packs_from_db,
@@ -89,6 +103,8 @@ from packs_tool import (  # type: ignore[import]
     detect_filter_category,
     get_filter_question,
     detect_filter_location,
+    filter_packs,
+    pack_to_card_dict,
 )
 from geo_service import get_geo_service
 from agents.historical.historical_agent_proxy import HistoricalAgentProxy
@@ -101,10 +117,88 @@ from wizard_state_machine import (
     question_for_state,
 )
 from redis_client import get_redis
+from redis_client import get_redis
+from securite.output_guard import check_output_generic, check_output_rag  # NOUVEAU
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ORCHESTRATEUR PRINCIPAL
 # ─────────────────────────────────────────────────────────────────────────────
+_circuit_v2_modules = {}
+
+
+def _load_circuit_v2_modules():
+    """Charge une seule fois SessionLocal/CircuitAgent/etc. depuis AgentHistorique/backend/app,
+    en contournant le conflit de nom avec le module racine 'app' (app.py, chargé par uvicorn)."""
+    if _circuit_v2_modules:
+        return _circuit_v2_modules
+
+    backend_path = os.path.abspath(
+        os.path.join(_chatbot_path, "..", "AgentHistorique", "backend")
+    )
+    if backend_path not in sys.path:
+        sys.path.insert(0, backend_path)
+
+    # Retirer temporairement 'app' (et ses sous-modules) du cache d'imports,
+    # pour que Python résolve 'app' vers AgentHistorique/backend/app/ (un vrai package).
+    saved = {
+        name: mod for name, mod in list(sys.modules.items())
+        if name == "app" or name.startswith("app.")
+    }
+    for name in saved:
+        del sys.modules[name]
+
+    try:
+        from app.database import SessionLocal
+        from app.agents.circuit_agent import CircuitAgent, CircuitAgentError
+        from app.schemas.circuit_agent import (
+            CircuitRecommendationRequest,
+            CircuitPreferences,
+            CircuitRecommendationResponse,
+        )
+        _circuit_v2_modules.update(
+            SessionLocal=SessionLocal,
+            CircuitAgent=CircuitAgent,
+            CircuitRecommendationRequest=CircuitRecommendationRequest,
+            CircuitPreferences=CircuitPreferences,
+            CircuitRecommendationResponse=CircuitRecommendationResponse,
+            CircuitAgentError=CircuitAgentError,
+        )
+        # Renommer dans le cache pour ne plus jamais entrer en collision avec le 'app' racine
+        for name in list(sys.modules.keys()):
+            if name == "app" or name.startswith("app."):
+                sys.modules["_agenthistorique_" + name] = sys.modules[name]
+                del sys.modules[name]
+    finally:
+        # Restaurer le 'app' racine (app.py d'uvicorn) exactement comme avant
+        for name, mod in saved.items():
+            sys.modules[name] = mod
+
+    return _circuit_v2_modules
+
+class CircuitRecommendationBusinessError(Exception):
+    """Erreur métier lors de la génération de circuit (contraintes
+    irréalisables, monuments introuvables, etc.) — à distinguer d'une
+    panne technique. Doit être traduite en 422 par la couche API."""
+
+def _run_circuit_recommendation_sync(request):
+    mods = _load_circuit_v2_modules()
+    CircuitAgentError = mods["CircuitAgentError"]
+    db = mods["SessionLocal"]()
+    try:
+        agent = mods["CircuitAgent"](db)
+        result = agent.recommend(request)
+        db.commit()
+        return result
+    except CircuitAgentError as e:
+        db.rollback()
+        log.warning(f"[WIZARD] Circuit non réalisable : {e}")
+        raise CircuitRecommendationBusinessError(str(e)) from e
+    except Exception as e:
+        db.rollback()
+        log.error(f"[WIZARD] Erreur DB/Agent : {e}")
+        raise e
+    finally:
+        db.close()
 
 class OrchestratorAgent:
     """
@@ -138,13 +232,11 @@ class OrchestratorAgent:
         if not ok:
             log.warning("[ORCHESTRATEUR] Agent historique non démarré — fallback actif")
 
-        from sentence_transformers import SentenceTransformer
-        import os
         self._embedding_model = SentenceTransformer(
-             os.environ.get(
-                 "EMBEDDING_MODEL",
-                 "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-             )
+            os.environ.get(
+                "EMBEDDING_MODEL",
+                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            )
         )
 
     def inject_systeme(self, systeme) -> None:
@@ -217,12 +309,14 @@ class OrchestratorAgent:
 
             # ── ÉTAPE 2quinquies : Activation du mode guide GPS après choix de circuit ──
             if profil.get("attente_activation_guide") and is_affirmation(message):
-                return await self._activer_mode_guide(user_id, message, profil, historique, langue)
+                return await self._activer_mode_guide(
+                    user_id, message, profil, historique, langue
+                )
             # ── ÉTAPE 2sexies : Wizard circuit structuré (Phase 1) ─────────
             wizard_store = WizardStore(await get_redis())
 
             if action and action.get("type") == "start_wizard":
-                wizard = start_wizard(user_id)
+                wizard = start_wizard(user_id, None)
                 await wizard_store.save(wizard)
                 reponse_finale = question_for_state(wizard.state, langue)
                 await self._update_memory(
@@ -239,9 +333,12 @@ class OrchestratorAgent:
 
             wizard = await wizard_store.get(user_id)
             if wizard and wizard.state != WizardState.IDLE and action:
+                event_type = None
                 try:
+
                     event_type = action.get("type")
                     if not event_type:
+
                         raise ValueError("action.type manquant ou vide")
                     event = WizardEvent(type=event_type, value=action.get("value"))
                     wizard = apply_event(wizard, event)
@@ -256,19 +353,30 @@ class OrchestratorAgent:
                 else:
                     reponse_finale = question_for_state(wizard.state, langue)
 
-                if wizard.state == WizardState.CIRCUIT_GENERATION:
-                    reponse_finale = await self._generate_wizard_circuit(
-                        user_id, wizard, wizard_store, langue
+                if event_type == "confirm_guide_mode":
+                    activer = action.get("value") == "yes"
+                    update_profile(
+                        user_id,
+                        {
+                            "mode_guide_actif": activer,
+                            "circuit_confirme_id": (wizard.circuit_result or {}).get(
+                                "circuit_id"
+                            ),
+                            "circuit_confirme_nom": (wizard.circuit_result or {}).get(
+                                "title"
+                            ),
+                        },
                     )
-                else:
-                    reponse_finale = question_for_state(wizard.state, langue)
-
-                if wizard.state == WizardState.GUIDE_MODE_READY:
-                    update_profile(user_id, {
-                        "mode_guide_actif": True,
-                        "circuit_confirme_id": wizard.circuit_result.get("circuit_id"),
-                        "circuit_confirme_nom": wizard.circuit_result.get("title"),
-                    })
+                    if activer:
+                        reponse_finale = (
+                            "Mode Guide GPS activé ! 📍 Autorisez l'accès à votre "
+                            "position — je vous guiderai à l'approche de chaque site."
+                        )
+                    else:
+                        reponse_finale = (
+                            "Pas de souci ! Votre circuit reste disponible si vous "
+                            "changez d'avis."
+                        )
 
                 await self._update_memory(
                     user_id=user_id,
@@ -288,13 +396,31 @@ class OrchestratorAgent:
                 category = detect_filter_category(message)
                 location = detect_filter_location(message)
                 msg_lower = message.lower().strip()
-                wants_all = any(w in msg_lower for w in ["tous", "tout", "tous les packs", "catalogue", "all", "كل", "الباقات"])
+                wants_all = any(
+                    w in msg_lower
+                    for w in [
+                        "tous",
+                        "tout",
+                        "tous les packs",
+                        "catalogue",
+                        "all",
+                        "كل",
+                        "الباقات",
+                    ]
+                )
 
                 if category or location or wants_all:
                     packs = await asyncio.to_thread(get_packs_from_db)
-                    reponse_finale = format_packs_response(packs, lang=langue, category=category, location=location)
+                    filtered = filter_packs(packs, category=category, location=location)
+                    reponse_finale = (
+                        "Voici les packs disponibles pour vous 👇"
+                        if filtered else "Aucun pack disponible pour cette recherche."
+                    )
 
-                    profil_update = {"attente_filtre_pack": False}
+                    profil_update = {
+                        "attente_filtre_pack": False,
+                        "last_packs": [pack_to_card_dict(p) for p in filtered],
+                    }
                     update_profile(user_id, profil_update)
 
                     await self._update_memory(
@@ -320,7 +446,15 @@ class OrchestratorAgent:
                 location = detect_filter_location(message)
                 if category or location:
                     packs = await asyncio.to_thread(get_packs_from_db)
-                    reponse_finale = format_packs_response(packs, lang=langue, category=category, location=location)
+                    filtered = filter_packs(packs, category=category, location=location)
+                    reponse_finale = (
+                        "Voici les packs disponibles pour vous 👇"
+                        if filtered else "Aucun pack disponible pour cette recherche."
+                    )
+                    profil_update = {"last_packs": [pack_to_card_dict(p) for p in filtered]}
+                    update_profile(user_id, profil_update)
+                    
+
                     await self._update_memory(
                         user_id=user_id,
                         message=message,
@@ -336,6 +470,7 @@ class OrchestratorAgent:
                     reponse_finale = get_filter_question(lang=langue)
                     profil_update = {"attente_filtre_pack": True}
                     update_profile(user_id, profil_update)
+                    
                     await self._update_memory(
                         user_id=user_id,
                         message=message,
@@ -346,6 +481,7 @@ class OrchestratorAgent:
                         historique=historique,
                         profil=profil,
                     )
+
                     return reponse_finale
 
             # ── ÉTAPE 3 : Extraction signaux (sans LLM) ───────────────────
@@ -361,16 +497,29 @@ class OrchestratorAgent:
 
                 msg_low = message.lower().strip()
                 mots_selection_voiture = (
-                   "nissan", "hyundai", "volkswagen", "polo", "leaf", "i10",
-                  "celle", "celui", "la première", "la deuxieme", "la deuxième",
-                   "la troisième"
+                    "nissan",
+                    "hyundai",
+                    "volkswagen",
+                    "polo",
+                    "leaf",
+                    "i10",
+                    "celle",
+                    "celui",
+                    "la première",
+                    "la deuxieme",
+                    "la deuxième",
+                    "la troisième",
                 )
 
                 intention_ambigue = intention == "SMALLTALK" or confiance < 0.6
-                if intention_ambigue and any(m in msg_low for m in mots_selection_voiture):
+                if intention_ambigue and any(
+                    m in msg_low for m in mots_selection_voiture
+                ):
                     intention = "RESERVATION"
                     confiance = max(confiance, 0.90)
-                    log.info(f"  Intention corrigée → RESERVATION (sticky réservation, dernière intention={derniere_intention})")
+                    log.info(
+                        f"  Intention corrigée → RESERVATION (sticky réservation, dernière intention={derniere_intention})"
+                    )
 
             if contient_demande_reservation(message):
                 intention = "RESERVATION"
@@ -380,25 +529,40 @@ class OrchestratorAgent:
             log.info(f"  Intention : {intention} (confiance={confiance:.2f})")
 
             # Fallback mots-clés : si le LLM hésite ou classe en SMALLTALK, mais que les mots-clés historiques matchent
-            if (intention in ("SMALLTALK", "CLARIFICATION") or confiance < INTENT_CONFIDENCE_THRESHOLD) and self._detect_historique_intent(message, langue):
+            if (
+                intention in ("SMALLTALK", "CLARIFICATION")
+                or confiance < INTENT_CONFIDENCE_THRESHOLD
+            ) and self._detect_historique_intent(message, langue):
                 ancien_intent = intention
                 ancienne_confiance = confiance
                 intention = "HISTORIQUE"
                 confiance = 0.85
                 if ancien_intent != "SMALLTALK":
-                    log.info(f"  [MONITORING] Intention corrigée de {ancien_intent} → HISTORIQUE par fallback mots-clés (confiance initiale={ancienne_confiance:.2f})")
+                    log.info(
+                        f"  [MONITORING] Intention corrigée de {ancien_intent} → HISTORIQUE par fallback mots-clés (confiance initiale={ancienne_confiance:.2f})"
+                    )
                 else:
-                    log.info("  Intention corrigée → HISTORIQUE (mots-clés détectés sur SMALLTALK)")
+                    log.info(
+                        "  Intention corrigée → HISTORIQUE (mots-clés détectés sur SMALLTALK)"
+                    )
 
             # Si confiance trop faible → demander clarification
-            if confiance < INTENT_CONFIDENCE_THRESHOLD and intention not in ("SMALLTALK", "FEEDBACK"):
+            if confiance < INTENT_CONFIDENCE_THRESHOLD and intention not in (
+                "SMALLTALK",
+                "FEEDBACK",
+            ):
                 return CLARIFICATION_MESSAGES.get(langue, CLARIFICATION_MESSAGES["FR"])
 
             # Enrichir signaux avec entités détectées
-            signaux.update({k: v for k, v in entites.items() if v and not signaux.get(k)})
+            signaux.update(
+                {k: v for k, v in entites.items() if v and not signaux.get(k)}
+            )
 
             # Réinitialiser la proposition circuit si nouvelle intention forte
-            if intention in INTENTIONS_BLOQUANT_CIRCUIT and confiance >= INTENT_CONFIDENCE_THRESHOLD:
+            if (
+                intention in INTENTIONS_BLOQUANT_CIRCUIT
+                and confiance >= INTENT_CONFIDENCE_THRESHOLD
+            ):
                 signaux["attente_confirmation_circuit"] = False
 
             # ── Déclenchement onboarding circuit (après exclusion RESERVATION, etc.) ──
@@ -408,7 +572,8 @@ class OrchestratorAgent:
                 and is_affirmation_circuit(message)
             )
             if veut_circuit:
-                wizard = start_wizard(user_id)
+                wizard_store = WizardStore(await get_redis())
+                wizard = start_wizard(user_id, signaux)
                 await wizard_store.save(wizard)
                 reponse_finale = question_for_state(wizard.state, langue)
                 await self._update_memory(
@@ -422,7 +587,7 @@ class OrchestratorAgent:
                     profil=profil,
                 )
                 return reponse_finale
-            
+
             # ── ÉTAPE 5 : Routing et appels agents ────────────────────────
             agents_responses = await self._route_to_agents(
                 intention=intention,
@@ -453,20 +618,32 @@ class OrchestratorAgent:
                 hist = agents_responses["agent_guide"]
                 if hist.get("answer") and not hist.get("error"):
                     answer = hist["answer"]
+                    reponse_llm_brute = (
+                        answer  # NOUVEAU : copie AVANT ajout du suffixe Sources
+                    )
                     sources = hist.get("sources", [])
                     source_titles = [s["title"] for s in sources[:2] if s.get("title")]
                     if source_titles:
                         answer += f"\n\n*Sources : {', '.join(source_titles)}*"
                     reponse_finale = answer
                     await self._update_memory(
-                        user_id=user_id, message=message, reponse=reponse_finale,
-                        signaux=signaux, langue=langue, intention="HISTORIQUE",
-                        historique=historique, profil=profil,
+                        user_id=user_id,
+                        message=message,
+                        reponse=reponse_finale,
+                        signaux=signaux,
+                        langue=langue,
+                        intention="HISTORIQUE",
+                        historique=historique,
+                        profil=profil,
+                        chunks_rag=hist.get("sources", []),
+                        texte_a_verifier=reponse_llm_brute,
                     )
                     return reponse_finale
 
             elif intention == "SMALLTALK":
-                reponse_finale = await self._respond_smalltalk(message, langue, historique)
+                reponse_finale = await self._respond_smalltalk(
+                    message, langue, historique
+                )
             else:
                 reponse_finale = await self._synthesize_response(
                     agents_responses=agents_responses,
@@ -513,7 +690,9 @@ class OrchestratorAgent:
 
         except Exception as e:
             log.error(f"[ORCHESTRATEUR] Erreur inattendue : {e}", exc_info=True)
-            return FALLBACK_MESSAGES.get("FR", "Une erreur est survenue, réessayez dans quelques instants.")
+            return FALLBACK_MESSAGES.get(
+                "FR", "Une erreur est survenue, réessayez dans quelques instants."
+            )
 
     # ─────────────────────────────────────────────────────────────────────────
     # DÉTECTION LANGUE (sans LLM — regex)
@@ -530,14 +709,14 @@ class OrchestratorAgent:
         msg = message.lower().strip()
 
         # Arabe : présence de caractères arabes
-        if re.search(r'[\u0600-\u06FF]', message):
+        if re.search(r"[\u0600-\u06FF]", message):
             return "AR"
 
         # Mots-clés forts par langue
-        fr_keywords = r'\b(bonjour|je|tu|nous|vous|est|sont|avec|pour|dans|sur|qui|que|quoi|comment|combien|merci|salut|bonsoir)\b'
-        en_keywords = r'\b(hello|hi|i|we|you|is|are|with|for|in|on|who|what|how|much|thanks|please|want|need|can)\b'
-        it_keywords = r'\b(ciao|buongiorno|voglio|sono|con|per|nel|sulla|chi|cosa|come|grazie|salve)\b'
-        de_keywords = r'\b(hallo|guten|ich|wir|sie|ist|sind|mit|für|in|auf|wer|was|wie|danke|bitte)\b'
+        fr_keywords = r"\b(bonjour|je|tu|nous|vous|est|sont|avec|pour|dans|sur|qui|que|quoi|comment|combien|merci|salut|bonsoir)\b"
+        en_keywords = r"\b(hello|hi|i|we|you|is|are|with|for|in|on|who|what|how|much|thanks|please|want|need|can)\b"
+        it_keywords = r"\b(ciao|buongiorno|voglio|sono|con|per|nel|sulla|chi|cosa|come|grazie|salve)\b"
+        de_keywords = r"\b(hallo|guten|ich|wir|sie|ist|sind|mit|für|in|auf|wer|was|wie|danke|bitte)\b"
 
         scores = {
             "FR": len(re.findall(fr_keywords, msg)),
@@ -572,52 +751,73 @@ class OrchestratorAgent:
 
         # ── Budget ────────────────────────────────────────────────────────
         budget_match = re.search(
-            r'(\d+)\s*(?:dt|dinar|dinars|tnd|€|eur|euro|euros|\$|dollar)',
-            msg
+            r"(\d+)\s*(?:dt|dinar|dinars|tnd|€|eur|euro|euros|\$|dollar)", msg
         )
         if budget_match:
             signaux["budget"] = int(budget_match.group(1))
 
         # ── Taille groupe ─────────────────────────────────────────────────
         groupe_match = re.search(
-            r'(\d+)\s*(?:personne|personnes|adulte|adultes|enfant|enfants|pers\.?)',
-            msg
+            r"(\d+)\s*(?:personne|personnes|adulte|adultes|enfant|enfants|pers\.?)", msg
         )
         if groupe_match:
             signaux["taille_groupe"] = int(groupe_match.group(1))
-        elif re.search(r'\b(seul|solo|alone)\b', msg):
+        elif re.search(r"\b(seul|solo|alone)\b", msg):
             signaux["taille_groupe"] = 1
-        elif re.search(r'\b(couple|deux|2)\b', msg):
+        elif re.search(r"\b(couple|deux|2)\b", msg):
             signaux["taille_groupe"] = 2
 
         # ── Type de groupe ────────────────────────────────────────────────
-        if re.search(r'\b(famille|family|enfant|enfants|kids?|children)\b', msg):
+        if re.search(r"\b(famille|family|enfant|enfants|kids?|children)\b", msg):
             signaux["type_groupe"] = "famille"
-        elif re.search(r'\b(couple|romantique|lune de miel|honeymoon)\b', msg):
+        elif re.search(r"\b(couple|romantique|lune de miel|honeymoon)\b", msg):
             signaux["type_groupe"] = "couple"
-        elif re.search(r'\b(groupe|groupe scolaire|amis|friends|school)\b', msg):
+        elif re.search(r"\b(groupe|groupe scolaire|amis|friends|school)\b", msg):
             signaux["type_groupe"] = "groupe"
-        elif re.search(r'\b(solo|seul|backpacker)\b', msg):
+        elif re.search(r"\b(solo|seul|backpacker)\b", msg):
             signaux["type_groupe"] = "solo"
 
         # ── Durée ─────────────────────────────────────────────────────────
-        if re.search(r'\b(demi.?journ[eé]e|half.?day|matinée|après.?midi)\b', msg):
+        if re.search(r"\b(demi.?journ[eé]e|half.?day|matinée|après.?midi)\b", msg):
             signaux["duree"] = "demi-journée"
-        elif re.search(r'\b(journ[eé]e|journée entière|full.?day|toute la journée)\b', msg):
+        elif re.search(
+            r"\b(journ[eé]e|journée entière|full.?day|toute la journée)\b", msg
+        ):
             signaux["duree"] = "journée"
-        elif re.search(r'\b(week.?end|2 jours|deux jours)\b', msg):
+        elif re.search(r"\b(week.?end|2 jours|deux jours)\b", msg):
             signaux["duree"] = "week-end"
-        elif re.search(r'\b(\d+)\s*(?:jours?|days?)\b', msg):
-            nb_match = re.search(r'(\d+)\s*(?:jours?|days?)', msg)
+        elif re.search(r"\b(\d+)\s*(?:jours?|days?)\b", msg):
+            nb_match = re.search(r"(\d+)\s*(?:jours?|days?)", msg)
             if nb_match:
                 signaux["duree"] = f"{nb_match.group(1)} jours"
 
         # ── Lieu ──────────────────────────────────────────────────────────
         lieux_connus = [
-            "carthage", "médina", "medina", "bardo", "sidi bou saïd", "sidi bou said",
-            "el jem", "dougga", "tozeur", "douz", "kairouan", "monastir", "mahdia",
-            "hammamet", "nabeul", "bizerte", "tabarka", "ain draham", "tataouine",
-            "matmata", "chenini", "sbeitla", "zaghouan", "kerkouane", "tunis",
+            "carthage",
+            "médina",
+            "medina",
+            "bardo",
+            "sidi bou saïd",
+            "sidi bou said",
+            "el jem",
+            "dougga",
+            "tozeur",
+            "douz",
+            "kairouan",
+            "monastir",
+            "mahdia",
+            "hammamet",
+            "nabeul",
+            "bizerte",
+            "tabarka",
+            "ain draham",
+            "tataouine",
+            "matmata",
+            "chenini",
+            "sbeitla",
+            "zaghouan",
+            "kerkouane",
+            "tunis",
         ]
         for lieu in lieux_connus:
             if lieu in msg:
@@ -627,13 +827,18 @@ class OrchestratorAgent:
                 break
 
         # ── Type d'activité ───────────────────────────────────────────────
-        if re.search(r'\b(historique|histoire|ruines?|archéologie|antiquité|romain|punique)\b', msg):
+        if re.search(
+            r"\b(historique|histoire|ruines?|archéologie|antiquité|romain|punique)\b",
+            msg,
+        ):
             signaux["type_activite"] = "historique"
-        elif re.search(r'\b(musée|museum|expo|exposition)\b', msg):
+        elif re.search(r"\b(musée|museum|expo|exposition)\b", msg):
             signaux["type_activite"] = "musee"
-        elif re.search(r'\b(ar|vr|réalité augmentée|réalité virtuelle|immersif|numérique)\b', msg):
+        elif re.search(
+            r"\b(ar|vr|réalité augmentée|réalité virtuelle|immersif|numérique)\b", msg
+        ):
             signaux["type_activite"] = "ar_vr"
-        elif re.search(r'\b(nature|randonnée|plage|mer|montagne|désert|sahara)\b', msg):
+        elif re.search(r"\b(nature|randonnée|plage|mer|montagne|désert|sahara)\b", msg):
             signaux["type_activite"] = "nature"
 
         return signaux
@@ -642,7 +847,9 @@ class OrchestratorAgent:
     # DÉTECTION INTENTION (LLM rapide)
     # ─────────────────────────────────────────────────────────────────────────
 
-    async def _detect_intent(self, message: str, langue: str, historique: list = []) -> dict:
+    async def _detect_intent(
+        self, message: str, langue: str, historique: list = []
+    ) -> dict:
         """
         Classifie l'intention du message via LLM rapide (llama-3.1-8b-instant).
         Utilise un prompt JSON strict pour avoir un résultat parsable.
@@ -686,8 +893,12 @@ class OrchestratorAgent:
                 result["intention"] = "SMALLTALK"
                 result["confiance"] = 0.5
 
-            tokens = getattr(response, 'usage', None)
-            tokens_used = tokens.total_tokens if tokens and getattr(tokens, 'total_tokens', None) else 0
+            tokens = getattr(response, "usage", None)
+            tokens_used = (
+                tokens.total_tokens
+                if tokens and getattr(tokens, "total_tokens", None)
+                else 0
+            )
             log.debug(f"[INTENT] Tokens utilisés : {tokens_used}")
 
             return result
@@ -722,15 +933,52 @@ class OrchestratorAgent:
         """Détection d'intention par mots-clés si le LLM échoue."""
         msg = message.lower()
 
-        if any(w in msg for w in ["réserver", "réservation", "voiture", "hôtel", "louer", "location"]):
+        if any(
+            w in msg
+            for w in [
+                "réserver",
+                "réservation",
+                "voiture",
+                "hôtel",
+                "louer",
+                "location",
+            ]
+        ):
             return {"intention": "RESERVATION", "confiance": 0.8, "entites": {}}
-        if any(w in msg for w in ["circuit", "itinéraire", "visite", "excursion", "pack", "famille", "journée"]):
+        if any(
+            w in msg
+            for w in [
+                "circuit",
+                "itinéraire",
+                "visite",
+                "excursion",
+                "pack",
+                "famille",
+                "journée",
+            ]
+        ):
             return {"intention": "CIRCUIT", "confiance": 0.75, "entites": {}}
-        if any(w in msg for w in ["carthage", "bardo", "médina", "histoire", "monument", "ruines"]):
+        if any(
+            w in msg
+            for w in ["carthage", "bardo", "médina", "histoire", "monument", "ruines"]
+        ):
             return {"intention": "HISTORIQUE", "confiance": 0.75, "entites": {}}
-        if any(w in msg for w in ["météo", "temps", "pluie", "soleil", "température", "weather"]):
+        if any(
+            w in msg
+            for w in ["météo", "temps", "pluie", "soleil", "température", "weather"]
+        ):
             return {"intention": "METEO", "confiance": 0.85, "entites": {}}
-        if any(w in msg for w in ["horaire", "prix", "tarif", "accès", "comment y aller", "transport"]):
+        if any(
+            w in msg
+            for w in [
+                "horaire",
+                "prix",
+                "tarif",
+                "accès",
+                "comment y aller",
+                "transport",
+            ]
+        ):
             return {"intention": "PRATIQUE", "confiance": 0.75, "entites": {}}
 
         return {"intention": "SMALLTALK", "confiance": 0.6, "entites": {}}
@@ -772,6 +1020,7 @@ class OrchestratorAgent:
                 best_score, best_match = score, c
 
         return best_match if best_score >= 0.5 else None
+
     # ─────────────────────────────────────────────────────────────────────────
     # ROUTING ET APPELS AGENTS
     # ─────────────────────────────────────────────────────────────────────────
@@ -799,10 +1048,10 @@ class OrchestratorAgent:
         # ── Déterminer si on a besoin de la météo ────────────────────────
         # La météo est enrichie automatiquement pour tous les circuits outdoor
         lieu = signaux.get("lieu", "")
-        need_meteo = (
-            intention in ("METEO", "CIRCUIT")
-            or any(l in message.lower() for l in LIEUX_OUTDOOR)
+        need_meteo = intention in ("METEO", "CIRCUIT") and (
+            any(l in message.lower() for l in LIEUX_OUTDOOR)
             or signaux.get("outdoor_detected", False)
+            or True  # la météo reste utile pour toute demande CIRCUIT/METEO
         )
 
         # ── Appels en parallèle ───────────────────────────────────────────
@@ -840,10 +1089,22 @@ class OrchestratorAgent:
 
             except asyncio.TimeoutError:
                 log.warning("[ORCHESTRATEUR] Timeout agent réservation")
-                responses["agent_reservation"] = {"disponible": False, "response": None, "error": "timeout", "payload": {"_raw": {}}}
+                responses["agent_reservation"] = {
+                    "disponible": False,
+                    "response": None,
+                    "error": "timeout",
+                    "payload": {"_raw": {}},
+                }
             except Exception as e:
-                log.warning(f"[ORCHESTRATEUR] Erreur agent réservation : {e}", exc_info=True)
-                responses["agent_reservation"] = {"disponible": False, "response": None, "error": str(e), "payload": {"_raw": {}}}
+                log.warning(
+                    f"[ORCHESTRATEUR] Erreur agent réservation : {e}", exc_info=True
+                )
+                responses["agent_reservation"] = {
+                    "disponible": False,
+                    "response": None,
+                    "error": str(e),
+                    "payload": {"_raw": {}},
+                }
 
         # Guide historique / pratique (TODO: RAG pgvector)
         if "agent_guide" in agents_to_call:
@@ -872,7 +1133,9 @@ class OrchestratorAgent:
                 responses["agent_meteo"] = None
 
         # Circuits avec données météo
-        if "agent_circuits" in tasks or ("moteur_math" in agents_to_call and tasks.get("agent_circuits") is None):
+        if "agent_circuits" in tasks or (
+            "moteur_math" in agents_to_call and tasks.get("agent_circuits") is None
+        ):
             try:
                 circuits_data = await asyncio.wait_for(
                     self._call_agent_circuits(message, user_id, signaux, meteo_data),
@@ -884,10 +1147,15 @@ class OrchestratorAgent:
                 responses["agent_circuits"] = None
 
         # Autres agents en parallèle
-        remaining = {k: v for k, v in tasks.items() if k not in ("agent_meteo", "agent_circuits")}
+        remaining = {
+            k: v for k, v in tasks.items() if k not in ("agent_meteo", "agent_circuits")
+        }
         if remaining:
             results = await asyncio.gather(
-                *[asyncio.wait_for(coro, timeout=AGENT_TIMEOUT_SECONDS) for coro in remaining.values()],
+                *[
+                    asyncio.wait_for(coro, timeout=AGENT_TIMEOUT_SECONDS)
+                    for coro in remaining.values()
+                ],
                 return_exceptions=True,
             )
             for name, result in zip(remaining.keys(), results):
@@ -945,7 +1213,7 @@ class OrchestratorAgent:
     async def _call_agent_circuits(self, message, user_id, signaux, meteo_data):
         """
         Appel à l'agent circuits avec ProfilSynthetique.
-        
+
         CHANGEMENT v2 :
         - Le wrapper construit ProfilSynthetique depuis signaux
         - Plus besoin de client en base
@@ -975,22 +1243,65 @@ class OrchestratorAgent:
     async def _generate_wizard_circuit(
         self, user_id: str, wizard, wizard_store, langue: str
     ) -> str:
-        from circuit_engine import recommend_circuit, CircuitProfil
+        from circuit_engine import MONUMENTS_CACHE
+        mods = _load_circuit_v2_modules()
+        CircuitRecommendationRequest = mods["CircuitRecommendationRequest"]
+        CircuitPreferences = mods["CircuitPreferences"]
 
         budget = wizard.budget or {}
-        duration_hours = (wizard.dates or {}).get("duration_hours")
-        duree_max = duration_hours * 60 if duration_hours else None
+        dates_dict = wizard.dates or {}
+        start_time = dates_dict.get("start_time")
+        end_time = dates_dict.get("end_time")
 
-        profil = CircuitProfil(
-            budget_max=budget.get("amount", 9999),
+        duree_max = None
+        if start_time and end_time:
+            from datetime import datetime
+            try:
+                t1 = datetime.strptime(start_time, "%H:%M")
+                t2 = datetime.strptime(end_time, "%H:%M")
+                delta = t2 - t1
+                duree_max = int(delta.total_seconds() // 60)
+                if duree_max <= 0:
+                    duree_max += 24 * 60
+            except ValueError:
+                pass
+
+        if duree_max is None:
+            duree_max = 180  # valeur par défaut raisonnable (3h), à ajuster selon le produit
+
+        must_visit_names = []
+        for i in wizard.must_visit or []:
+            if str(i).isdigit():
+                idx = int(i)
+                if 0 <= idx < len(MONUMENTS_CACHE):
+                    nom = MONUMENTS_CACHE[idx].get("nom")
+                    if nom:
+                        must_visit_names.append(nom)
+
+        epoques = wizard.epoques or []
+        fonctions = wizard.fonctions or []
+
+        request = CircuitRecommendationRequest(
+            session_id=user_id,
+            age=None,
             type_tarif=budget.get("type", "etranger"),
-            mobilite=wizard.mobility or "walking",
+            budget_max=budget.get("amount", 9999),
             transport=wizard.mobility or "walking",
-            duree_max=duree_max,
+            zone="Carthage",
+            preferences=CircuitPreferences(
+                epoques=epoques,
+                fonctions=fonctions,
+                must_visit=must_visit_names,
+                avoid=[],
+            ),
+            max_stops=12,
+            duration_minutes=duree_max,
+            start_time=start_time,
+            end_time=end_time,
         )
-
         try:
-            result = await asyncio.to_thread(recommend_circuit, profil, 3)
+            result = await asyncio.to_thread(_run_circuit_recommendation_sync, request)
+            circuits = [result] if result else []
         except Exception as e:
             log.error(f"[WIZARD] Échec technique recommend_circuit : {e}")
             wizard.state = WizardState.CIRCUIT_ADJUSTMENT
@@ -1001,18 +1312,15 @@ class OrchestratorAgent:
                 "pour réessayer ?"
             )
 
-        circuits = result["circuits"]
-
         if not circuits:
             wizard.state = WizardState.CIRCUIT_ADJUSTMENT
             await wizard_store.save(wizard)
-            warning_msg = result["warnings"][0] if result.get("warnings") else None
-            return warning_msg or (
+            return (
                 "Je n'ai trouvé aucun circuit correspondant à votre budget "
                 "ou vos dates — voulez-vous les ajuster ?"
             )
 
-        wizard.circuit_result = circuits[0]
+        wizard.circuit_result = circuits[0].response.model_dump()
         wizard.state = WizardState.CIRCUIT_REVIEW
         await wizard_store.save(wizard)
         return question_for_state(wizard.state, langue)
@@ -1038,11 +1346,14 @@ class OrchestratorAgent:
         """
         return tuple(self._embedding_model.encode(message).tolist())
 
-    async def _call_agent_guide(self, message: str, langue: str, historique: list) -> dict:
+    async def _call_agent_guide(
+        self, message: str, langue: str, historique: list
+    ) -> dict:
         """
         Appel à l'agent guide historique (RAG pgvector + web search).
         """
         import os
+
         query_embedding = list(self._encode_cached(message))
         session_ctx = {}  # profil Redis L1
 
@@ -1064,7 +1375,11 @@ class OrchestratorAgent:
             if isinstance(hist_result, dict):
                 hist_result["disponible"] = not bool(hist_result.get("error"))
             else:
-                hist_result = {"answer": "", "error": "invalid_format", "disponible": False}
+                hist_result = {
+                    "answer": "",
+                    "error": "invalid_format",
+                    "disponible": False,
+                }
             return hist_result
         except asyncio.TimeoutError:
             log.warning("[ORCHESTRATEUR] Timeout agent guide historique")
@@ -1399,7 +1714,9 @@ Génère une présentation narrative vivante en {langue_nom}.
         circuit_id = circuit.get("circuit_id")
         nom = circuit.get("nom", "")
         if not circuit_id:
-            log.error(f"[CIRCUIT] circuit_id manquant dans le circuit choisi : {circuit}")
+            log.error(
+                f"[CIRCUIT] circuit_id manquant dans le circuit choisi : {circuit}"
+            )
             return FALLBACK_MESSAGES.get(langue, FALLBACK_MESSAGES["FR"])
 
         set_active_circuit(user_id, circuit_id)
@@ -1440,18 +1757,25 @@ Génère une présentation narrative vivante en {langue_nom}.
         return reponse_finale
 
     async def _activer_mode_guide(
-        self, user_id: str, message: str, profil: dict, historique: list, langue: str,
+        self,
+        user_id: str,
+        message: str,
+        profil: dict,
+        historique: list,
+        langue: str,
     ) -> str:
-
         """
         Confirme l'activation du mode guide GPS.
         Le frontend doit détecter ce flag (via /api/chat ou un futur endpoint dédié)
         pour démarrer le polling de position.
-        """ 
-        update_profile(user_id, {
-           "attente_activation_guide": False,
-            "mode_guide_actif": True,
-        })
+        """
+        update_profile(
+            user_id,
+            {
+                "attente_activation_guide": False,
+                "mode_guide_actif": True,
+            },
+        )
 
         # Cohérence d'état : à ce stade, aucun autre flag "attente_*" ne devrait rester actif.
         # Les transitions précédentes ont déjà désactivé les états incompatibles.
@@ -1460,13 +1784,13 @@ Génère une présentation narrative vivante en {langue_nom}.
             reponse_finale = (
                 "GPS Guide mode activated! 📍 Please allow location access — "
                 "I'll tell you about each site as you approach it."
-          )
+            )
         elif langue == "AR":
             reponse_finale = "تم تفعيل وضع المرشد! 📍 يرجى السماح بالوصول لموقعك."
         else:
             reponse_finale = (
-                 "Mode Guide GPS activé ! 📍 Autorisez l'accès à votre position — "
-                 "je vous parlerai de chaque lieu à mesure que vous vous en approchez."
+                "Mode Guide GPS activé ! 📍 Autorisez l'accès à votre position — "
+                "je vous parlerai de chaque lieu à mesure que vous vous en approchez."
             )
 
         historique.append({"role": "user", "content": message})
@@ -1618,7 +1942,7 @@ Génère une présentation narrative vivante en {langue_nom}.
     def _format_agents_context(self, agents_responses: dict, intention: str) -> str:
         """
         Formate les réponses des agents en texte structuré pour le prompt de synthèse.
-        
+
         AJOUTS v2 :
         - Affiche explication personnalisée de chaque circuit
         - Signale les signaux manquants au LLM de synthèse
@@ -1632,8 +1956,8 @@ Génère une présentation narrative vivante en {langue_nom}.
         if meteo and meteo.get("disponible"):
             meteo_raw = self._meteo_raw(meteo)
             donnees = meteo_raw.get("donnees_brutes", {})
-            alerte  = donnees.get("alerte", {})
-            temp    = donnees.get("temperature")
+            alerte = donnees.get("alerte", {})
+            temp = donnees.get("temperature")
             lines.append("[MÉTÉO]")
             if temp:
                 lines.append(f"  Température : {temp}°C")
@@ -1666,14 +1990,22 @@ Génère une présentation narrative vivante en {langue_nom}.
                 # Scores détaillés (pour que le LLM sache quoi valoriser)
                 details = c.get("score_details", {})
                 score_budget = details.get("budget", None)
-                score_duree  = details.get("duree", None)
+                score_duree = details.get("duree", None)
 
                 if score_budget is not None:
-                    budget_ok = "✓ dans le budget" if score_budget >= 0.7 else "⚠ proche de la limite"
-                    lines.append(f"     Budget : {budget_ok} (score {score_budget:.2f})")
+                    budget_ok = (
+                        "✓ dans le budget"
+                        if score_budget >= 0.7
+                        else "⚠ proche de la limite"
+                    )
+                    lines.append(
+                        f"     Budget : {budget_ok} (score {score_budget:.2f})"
+                    )
 
                 if score_duree is not None:
-                    duree_ok = "✓ durée adaptée" if score_duree >= 0.7 else "⚠ un peu long"
+                    duree_ok = (
+                        "✓ durée adaptée" if score_duree >= 0.7 else "⚠ un peu long"
+                    )
                     lines.append(f"     Durée : {duree_ok} (score {score_duree:.2f})")
 
                 # Explication personnalisée
@@ -1687,14 +2019,16 @@ Génère une présentation narrative vivante en {langue_nom}.
                 # Monuments inclus
                 monuments = c.get("monuments", [])
                 if monuments and isinstance(monuments, list):
-                    lines.append(f"     Monuments : {', '.join(str(m) for m in monuments[:5])}")
+                    lines.append(
+                        f"     Monuments : {', '.join(str(m) for m in monuments[:5])}"
+                    )
 
             # Signaux manquants → le LLM doit poser la question naturellement
             manquants = circuits_raw.get("manquants", [])
             if manquants:
                 questions_map = {
                     "budget": "Quel est votre budget approximatif ?",
-                    "duree":  "Combien de temps avez-vous pour cette visite ?",
+                    "duree": "Combien de temps avez-vous pour cette visite ?",
                 }
                 questions = [questions_map[m] for m in manquants if m in questions_map]
                 if questions:
@@ -1720,6 +2054,7 @@ Génère une présentation narrative vivante en {langue_nom}.
             )
 
         return "\n".join(lines)
+
     # ─────────────────────────────────────────────────────────────────────────
     # MISE À JOUR MÉMOIRE
     # ─────────────────────────────────────────────────────────────────────────
@@ -1734,12 +2069,52 @@ Génère une présentation narrative vivante en {langue_nom}.
         intention: str,
         historique: list,
         profil: dict,
+        chunks_rag: Optional[list] = None,
+        texte_a_verifier: Optional[str] = None,
     ) -> None:
         """
         Met à jour la mémoire session après chaque échange.
+        - Exécute les guardrails de sortie (sécurité) — Niveau 1 systématique,
+          Niveau 2 si chunks_rag est fourni (agent historique uniquement)
         - Ajoute le message et la réponse à l'historique
         - Met à jour le profil avec les nouveaux signaux
         """
+        # ── Guardrails de sortie — isolés dans leur propre try/except ──────
+        # pour qu'une erreur du guard ne bloque jamais l'écriture mémoire.
+        try:
+            texte_guard = texte_a_verifier if texte_a_verifier is not None else reponse
+            if chunks_rag is not None:
+                guard_result = check_output_rag(
+                    reponse=texte_guard,
+                    sources=chunks_rag,
+                    question_originale=message,
+                    embedding_model=self._embedding_model,
+                )
+            else:
+                guard_result = check_output_generic(
+                    reponse=texte_guard,
+                    question_originale=message,
+                    embedding_model=self._embedding_model,
+                )
+
+            if guard_result.langage_inapproprie:
+                log.warning(
+                    f"[SECURITE] Langage inapproprié détecté (user={user_id}) : "
+                    f"{guard_result.termes_detectes}"
+                )
+            if guard_result.hors_sujet:
+                log.info(
+                    f"[SECURITE] Réponse hors-sujet potentielle (user={user_id}), "
+                    f"score={guard_result.score_similarite_domaine}"
+                )
+            if guard_result.hallucination_potentielle:
+                log.warning(
+                    f"[SECURITE] Hallucination potentielle (user={user_id}) : "
+                    f"faits non vérifiés={guard_result.faits_non_verifies}"
+                )
+        except Exception as e:
+            log.error(f"[SECURITE] Erreur guard de sortie : {e}")
+
         try:
             # Ajouter l'échange à l'historique
             historique.append({"role": "user", "content": message})
