@@ -60,7 +60,7 @@ class DuckDuckGoSearchTool(BaseWebSearchTool):
         try:
             from duckduckgo_search import DDGS
 
-            raw_results: list[dict[str, str]] = []
+            raw_results: list[dict[str, object]] = []
             with DDGS() as ddgs:
                 for backend in ("html", "auto"):
                     try:

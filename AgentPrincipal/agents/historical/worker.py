@@ -44,12 +44,25 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=True)
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", line_buffering=True)
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", line_buffering=True)
+
 logging.basicConfig(
-    level=os.environ.get("LOG_LEVEL", "WARNING"),
+    level="INFO",
     format="%(asctime)s [historical_worker] %(levelname)s %(message)s",
-    stream=sys.stderr,
+    handlers=[
+        logging.FileHandler(
+            os.path.join(os.path.dirname(__file__), "worker_debug.log"),
+            encoding="utf-8",
+        ),
+        logging.StreamHandler(sys.stderr),
+    ],
 )
 logger = logging.getLogger(__name__)
+
+# On garde notre propre logger en WARNING utile, mais on fait taire
+# le bruit interne d'httpx/httpcore (TLS, cipher suites, etc.)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logger.setLevel(logging.WARNING)
 
 RAG_MIN_SCORE = float(os.environ.get("RAG_MIN_SCORE", "0.65"))
 RAG_SCORE_GAP = float(os.environ.get("RAG_SCORE_GAP", "0.08"))
@@ -90,7 +103,11 @@ def process_request(payload: dict[str, Any], pipeline: HistoricalRAGPipeline) ->
     query_embedding: list[float] = payload.get("query_embedding", [])
     language: str = payload.get("language", "fr")
     session_context: dict = payload.get("session_context", {})
-    web_search_enabled: bool = payload.get("web_search_enabled", False)
+    # L'agent historique décide lui-même via son propre .env,
+    # indépendamment de ce que l'orchestrateur envoie.
+    web_search_enabled: bool = (
+        os.environ.get("WEB_SEARCH_ENABLED", "false").lower() == "true"
+    )
 
     if not query:
         return _err("query vide")
@@ -114,6 +131,14 @@ def process_request(payload: dict[str, Any], pipeline: HistoricalRAGPipeline) ->
 
     # Filtrer les chunks sous le score minimum
     good_chunks = [c for c in chunks if c["score"] >= RAG_MIN_SCORE]
+
+    logger.warning(
+        "DEBUG query=%r nb_chunks=%d nb_good_chunks=%d web_search_enabled=%s",
+        query,
+        len(chunks),
+        len(good_chunks),
+        web_search_enabled,
+    )
 
     # --- Fallback web (optionnel) ---
     web_context = ""
@@ -149,19 +174,20 @@ def process_request(payload: dict[str, Any], pipeline: HistoricalRAGPipeline) ->
         return _err(f"Erreur LLM: {exc}")
 
     # --- Formatter les sources pour Aziz ---
-    sources = [
-        {
-            "title": c.get("title") or "",
-            "score": round(c["score"], 4),
-            "source_type": c["source_type"],
-        }
-        for c in (good_chunks or chunks)[:3]
-    ]
+    # Si le web a servi de fallback, on n'affiche pas les chunks locaux
+    # sous le seuil (ils étaient insuffisants, pas des sources fiables).
     if used_web:
-        sources.append({"title": "Recherche web", "score": None, "source_type": "web"})
-
+        sources = [{"title": "Recherche web", "score": None, "source_type": "web"}]
+    else:
+        sources = [
+            {
+                "title": c.get("title") or "",
+                "score": round(c["score"], 4),
+                "source_type": c["source_type"],
+            }
+            for c in good_chunks[:3]
+        ]
     return _ok(answer, sources, retrieval_score, used_web, language)
-
 
 def main() -> None:
     """Boucle principale stdin/stdout JSON."""

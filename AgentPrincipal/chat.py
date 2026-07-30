@@ -41,20 +41,14 @@ _orchestrateur: OrchestratorAgent | None = None
 
 
 def _get_orchestrateur(systeme_recommandation=None) -> OrchestratorAgent:
-    """
-    Retourne l'instance singleton de l'orchestrateur.
-    Crée l'instance au premier appel.
-    """
     global _orchestrateur
     if _orchestrateur is None:
         log.info("[CHAT] Initialisation de l'orchestrateur...")
-        if systeme_recommandation is None:
-            from systeme_loader import charger_systeme
-            systeme_recommandation = charger_systeme()
+        # PertinenceCalculator/DEAP est un moteur legacy remplacé par CircuitAgent.
+        # On ne le charge plus au démarrage (coût de 1-2 min pour un composant mort).
         _orchestrateur = OrchestratorAgent(systeme_recommandation)
         log.info("[CHAT] Orchestrateur prêt.")
     return _orchestrateur
-
 
 def get_orchestrateur() -> OrchestratorAgent:
     """

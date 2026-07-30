@@ -45,7 +45,9 @@ class Monument(Base):
     phone: Mapped[str | None] = mapped_column("telephone_site", String(50), nullable=True)
     dominant_period: Mapped[str | None] = mapped_column("epoque_dominante", String(100), nullable=True)
     secondary_period: Mapped[str | None] = mapped_column("epoque_secondaire", String(100), nullable=True)
-    third_period: Mapped[str | None] = mapped_column("epoque_troisieme", String(100), nullable=True)
+    third_period: Mapped[str | None] = mapped_column(
+        "troisieme_epoque", String(100), nullable=True
+    )
     function: Mapped[str | None] = mapped_column("fonction_monument", String(100), nullable=True)
     price_resident: Mapped[float | None] = mapped_column("tarif_resident", Float, nullable=True)
     price_student: Mapped[float | None] = mapped_column("tarif_tudiant", Float, nullable=True)
@@ -69,7 +71,7 @@ class Monument(Base):
         if not self.latitude:
             return None
         try:
-            return float(self.latitude)
+            return float(self.latitude.replace(",", "."))
         except ValueError:
             return None
 
@@ -78,7 +80,7 @@ class Monument(Base):
         if not self.longitude:
             return None
         try:
-            return float(self.longitude)
+            return float(self.longitude.replace(",", "."))
         except ValueError:
             return None
 

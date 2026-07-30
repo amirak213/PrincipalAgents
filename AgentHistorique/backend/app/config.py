@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
+from pydantic import Field
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
 _PROJECT_ROOT = _BACKEND_DIR.parent
 
@@ -23,9 +23,14 @@ class Settings(BaseSettings):
     app_name: str = "Historical Guide RAG Agent"
     debug: bool = False
     database_url: str = (
-        "postgresql+psycopg://postgres:postgres@localhost:5433/historical_guide"
-    )
+        Field(
+             default="postgresql+psycopg://postgres:postgres@localhost:5433/historical_guide",
+             validation_alias="CIRCUIT_DATABASE_URL",
+        )
+     )
+    
     database_connect_timeout_seconds: float = 5.0
+    
 
     embedding_provider: str = "e5"
     embedding_model_name: str = "intfloat/multilingual-e5-small"
@@ -59,6 +64,7 @@ class Settings(BaseSettings):
     circuit_ga_mutation_rate: float = 0.15
     circuit_ga_crossover_rate: float = 0.8
     circuit_ga_elitism: bool = True
+    
 
     cors_origins: list[str] = [
         "http://localhost:5173",

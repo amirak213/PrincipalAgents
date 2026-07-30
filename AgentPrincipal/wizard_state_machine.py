@@ -35,6 +35,7 @@ class WizardState(str, Enum):
     PLACE_SELECTION = "PLACE_SELECTION"
     CUSTOMIZATION_BUDGET = "CUSTOMIZATION_BUDGET"
     CUSTOMIZATION_MOBILITY = "CUSTOMIZATION_MOBILITY"
+    CUSTOMIZATION_PREFERENCES = "CUSTOMIZATION_PREFERENCES"
     CUSTOMIZATION_DATES = "CUSTOMIZATION_DATES"
     CIRCUIT_GENERATION = "CIRCUIT_GENERATION"  # état transitoire, pas d'input user
     CIRCUIT_REVIEW = "CIRCUIT_REVIEW"
@@ -49,6 +50,7 @@ NOMINAL_ORDER: list[WizardState] = [
     WizardState.PLACE_SELECTION,
     WizardState.CUSTOMIZATION_BUDGET,
     WizardState.CUSTOMIZATION_MOBILITY,
+    WizardState.CUSTOMIZATION_PREFERENCES,
     WizardState.CUSTOMIZATION_DATES,
     WizardState.CIRCUIT_GENERATION,
     WizardState.CIRCUIT_REVIEW,
@@ -70,9 +72,12 @@ class WizardSession:
         None  # {"type": "resident"|"etranger", "amount": float}
     )
     mobility: Optional[str] = None  # "walking" | "car" | "bike"
+    epoques: list[str] = field(default_factory=list)
+    fonctions: list[str] = field(default_factory=list)
     dates: Optional[dict[str, Any]] = (
-        None  # {"date": "2026-07-20", "duration_hours": 4}
+        None  # {"date": "2026-07-20", "start_time": "09:00", "end_time": "11:00"}
     )
+    places_offset: int = 0
     circuit_result: Optional[dict[str, Any]] = (
         None  # réponse brute de /api/circuits/recommend
     )
@@ -175,6 +180,14 @@ def handle_place_selection(wizard: WizardSession, event: WizardEvent) -> WizardS
     return wizard
 
 
+def handle_load_more_places(wizard: WizardSession, event: WizardEvent) -> WizardSession:
+    if event.type != "load_more_places":
+        raise ValueError(f"Événement inattendu en PLACE_SELECTION: {event.type}")
+    wizard.places_offset += 1
+    wizard.state = WizardState.PLACE_SELECTION
+    return wizard
+
+
 def handle_budget(wizard: WizardSession, event: WizardEvent) -> WizardSession:
     if event.type != "set_budget":
         raise ValueError(f"Événement inattendu en CUSTOMIZATION_BUDGET: {event.type}")
@@ -187,6 +200,15 @@ def handle_mobility(wizard: WizardSession, event: WizardEvent) -> WizardSession:
     if event.type != "set_mobility":
         raise ValueError(f"Événement inattendu en CUSTOMIZATION_MOBILITY: {event.type}")
     wizard.mobility = event.value  # "walking" | "car" | "bike"
+    wizard.state = WizardState.CUSTOMIZATION_PREFERENCES
+    return wizard
+
+
+def handle_preferences(wizard: WizardSession, event: WizardEvent) -> WizardSession:
+    if event.type != "set_preferences":
+        raise ValueError(f"Événement inattendu en CUSTOMIZATION_PREFERENCES: {event.type}")
+    wizard.epoques = event.value.get("epoques", []) if isinstance(event.value, dict) else []
+    wizard.fonctions = event.value.get("fonctions", []) if isinstance(event.value, dict) else []
     wizard.state = WizardState.CUSTOMIZATION_DATES
     return wizard
 
@@ -220,6 +242,7 @@ def handle_circuit_adjustment(
         "places": WizardState.PLACE_SELECTION,
         "budget": WizardState.CUSTOMIZATION_BUDGET,
         "mobility": WizardState.CUSTOMIZATION_MOBILITY,
+        "preferences": WizardState.CUSTOMIZATION_PREFERENCES,
         "dates": WizardState.CUSTOMIZATION_DATES,
     }
     target = field_to_state.get(event.value)
@@ -229,15 +252,30 @@ def handle_circuit_adjustment(
     return wizard
 
 
+def handle_guide_mode_ready(wizard: WizardSession, event: WizardEvent) -> WizardSession:
+    if event.type != "confirm_guide_mode":
+        raise ValueError(f"Événement inattendu en GUIDE_MODE_READY: {event.type}")
+    # Oui ou non, le wizard se termine ici — l'activation réelle du flag
+    # mode_guide_actif est gérée par orchestrateur.py selon event.value.
+    wizard.state = WizardState.IDLE
+    return wizard
+
+
 HANDLERS = {
     WizardState.CITY_SELECTION: handle_city_selection,
     WizardState.PLACE_SELECTION: handle_place_selection,
+    WizardState.PLACE_SELECTION: handle_place_selection,
     WizardState.CUSTOMIZATION_BUDGET: handle_budget,
     WizardState.CUSTOMIZATION_MOBILITY: handle_mobility,
+    WizardState.CUSTOMIZATION_PREFERENCES: handle_preferences,
     WizardState.CUSTOMIZATION_DATES: handle_dates,
     WizardState.CIRCUIT_REVIEW: handle_circuit_review,
     WizardState.CIRCUIT_ADJUSTMENT: handle_circuit_adjustment,
+    WizardState.GUIDE_MODE_READY: handle_guide_mode_ready,
 }
+
+# Le handler de pagination est branché directement dans apply_event() pour
+# conserver un seul point d'entrée de transition sur PLACE_SELECTION.
 
 
 def apply_event(wizard: WizardSession, event: WizardEvent) -> WizardSession:
@@ -251,16 +289,47 @@ def apply_event(wizard: WizardSession, event: WizardEvent) -> WizardSession:
             "apply_event appelé en IDLE : l'entrée dans le wizard doit passer "
             "par la détection d'intention LLM, pas par apply_event."
         )
+    if wizard.state == WizardState.PLACE_SELECTION and event.type == "load_more_places":
+        return handle_load_more_places(wizard, event)
     handler = HANDLERS.get(wizard.state)
     if handler is None:
         raise ValueError(f"Aucun handler pour l'état {wizard.state}")
     return handler(wizard, event)
 
 
-def start_wizard(session_id: str) -> WizardSession:
+_CITY_ALIASES = {
+    "carthage": "carthage",
+    "la marsa": "la_marsa",
+    "la_marsa": "la_marsa",
+    "marsa": "la_marsa",
+}
+
+
+def _normalize_city(raw: str) -> str | None:
+    """Normalise un lieu brut vers une ville valide du wizard ('carthage' ou 'la_marsa')."""
+    if not raw:
+        return None
+    return _CITY_ALIASES.get(raw.strip().lower())
+
+
+def start_wizard(session_id: str, signaux: dict | None = None) -> WizardSession:
+    print(f"[DEBUG] start_wizard appelé avec signaux={signaux}")
     """Appelé depuis orchestrateur.py une fois que le LLM a détecté
-    l'intention "je veux un circuit" depuis IDLE."""
+    l'intention "je veux un circuit" depuis IDLE.
+
+    Si signaux contient un 'lieu' valide, pré-remplit la ville et saute
+    directement à PLACE_SELECTION. Sinon, débute en CITY_SELECTION.
+    """
     wizard = WizardSession(session_id=session_id, state=WizardState.CITY_SELECTION)
+
+    if signaux:
+        lieu_brut = signaux.get("lieu")
+        if lieu_brut:
+            ville = _normalize_city(lieu_brut)
+            if ville:
+                wizard.city = ville
+                wizard.state = WizardState.PLACE_SELECTION
+
     return wizard
 
 
@@ -280,7 +349,8 @@ _QUESTIONS_FR: dict[WizardState, str] = {
     WizardState.PLACE_SELECTION: "Quels lieux voulez-vous absolument visiter ?",
     WizardState.CUSTOMIZATION_BUDGET: "Quel est votre budget ?",
     WizardState.CUSTOMIZATION_MOBILITY: "Comment souhaitez-vous vous déplacer ?",
-    WizardState.CUSTOMIZATION_DATES: "Quand souhaitez-vous faire cette visite, et pour combien de temps ?",
+    WizardState.CUSTOMIZATION_PREFERENCES: "Quelles époques et types de sites vous intéressent ?",
+    WizardState.CUSTOMIZATION_DATES: "Quand souhaitez-vous faire cette visite, et à quelle heure ?",
     WizardState.CIRCUIT_GENERATION: "Je génère votre circuit, un instant...",
     WizardState.CIRCUIT_REVIEW: "Voici votre circuit proposé.",
     WizardState.CIRCUIT_ADJUSTMENT: "Que souhaitez-vous ajuster ?",

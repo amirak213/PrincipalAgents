@@ -47,23 +47,40 @@ def load_circuit_data() -> None:
 
     if _AGENT_CIRCUIT_DIR not in sys.path:
         sys.path.append(_AGENT_CIRCUIT_DIR)
-    from PertinenceCalculator import (
-        PertinenceCalculator,
-    )  # import tardif, dépend du sys.path ci-dessus
+    try:
+        from PertinenceCalculator import PertinenceCalculator  # legacy, peut être absent
+    except ModuleNotFoundError:
+        PertinenceCalculator = None
 
     monuments_path = os.path.join(_AGENT_CIRCUIT_DIR, "monuments.csv")
+    monuments_path = os.path.join(_AGENT_CIRCUIT_DIR, "monuments.csv")
+    print(
+        f"[DEBUG] monuments_path={monuments_path!r}, exists={os.path.exists(monuments_path)}"
+    )
     if os.path.exists(monuments_path):
         with open(monuments_path, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f, delimiter=";")
-            for row in reader:
-                MONUMENTS_CACHE.append(row)
+            if os.path.exists(monuments_path):
+                
+                print(f"[DEBUG] file size={os.path.getsize(monuments_path)} bytes")
+                with open(monuments_path, "r", encoding="utf-8") as f:
+                    content_preview = f.read(300)
+                    print(f"[DEBUG] first 300 chars: {content_preview!r}")
+                with open(monuments_path, "r", encoding="utf-8") as f:
+                    reader = csv.DictReader(f, delimiter=";")
+                    print(f"[DEBUG] fieldnames={reader.fieldnames}")
+                    for row in reader:
+                      MONUMENTS_CACHE.append(row)
+        print(f"[DEBUG] rows appended={len(MONUMENTS_CACHE)}")
+            
 
     circuits_path = os.path.join(_AGENT_CIRCUIT_DIR, "Profile_circuit.json")
     if os.path.exists(circuits_path):
         with open(circuits_path, "r", encoding="utf-8") as f:
             CIRCUITS_CACHE.extend(json.load(f))
 
-    PERTINENCE_CALC = PertinenceCalculator(fichier_circuits_json=circuits_path)
+    if PertinenceCalculator is not None:
+        PERTINENCE_CALC = PertinenceCalculator(fichier_circuits_json=circuits_path)
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +117,9 @@ class CircuitProfil:
 # ---------------------------------------------------------------------------
 
 
-def recommend_circuit(profil: CircuitProfil, n: int = 3) -> dict[str, Any]:
+def recommend_circuit(
+    profil: CircuitProfil, n: int = 3, must_visit_indices: Optional[list[int]] = None
+) -> dict[str, Any]:
     """
     Retourne un dict brut (pas de modèle Pydantic ici — c'est à l'appelant
     de mapper vers ce qu'il a besoin : app.py vers CircuitRecommendResponse,
@@ -135,7 +154,8 @@ def recommend_circuit(profil: CircuitProfil, n: int = 3) -> dict[str, Any]:
         PERTINENCE_CALC is not None
     ), "PERTINENCE_CALC non initialisé — vérifier monuments.csv/Profile_circuit.json"
 
-    recos = PERTINENCE_CALC.recommander(profil, n_recommandations=n)
+    pool_size = len(PERTINENCE_CALC.circuits) if must_visit_indices else n
+    recos = PERTINENCE_CALC.recommander(profil, n_recommandations=pool_size)
     if not recos:
         return {
             "feasible": False,
@@ -144,6 +164,25 @@ def recommend_circuit(profil: CircuitProfil, n: int = 3) -> dict[str, Any]:
                 "Aucun circuit précalculé ne correspond à votre demande exacte."
             ],
         }
+
+    if must_visit_indices:
+        must_visit_names = {
+            MONUMENTS_CACHE[i]["nom"]
+            for i in must_visit_indices
+            if 0 <= i < len(MONUMENTS_CACHE)
+        }
+
+        def _coverage(reco: dict) -> int:
+            circuit_data = next(
+                (c for c in CIRCUITS_CACHE if c["circuit_id"] == reco["circuit_id"]),
+                None,
+            )
+            if not circuit_data:
+                return 0
+            return len(must_visit_names & set(circuit_data.get("noms", [])))
+
+        recos.sort(key=lambda r: (_coverage(r), r["score_global"]), reverse=True)
+        recos = recos[:n]
 
     resultats = []
     for top_reco in recos:

@@ -87,19 +87,29 @@ class CircuitAgent:
             )
 
         context = ConstraintContext(
-            budget_max=request.budget_max,
-            duration_minutes=duration_minutes,
-            mobilite=request.mobilite,
-            required_ids=frozenset(required_ids),
-            excluded_ids=frozenset(excluded_ids),
-            max_stops=request.max_stops,
+          budget_max=request.budget_max,
+          duration_minutes=duration_minutes,
+          mobilite=request.mobilite,
+          required_ids=frozenset(required_ids),
+          excluded_ids=frozenset(excluded_ids),
+          max_stops=request.max_stops,
         )
 
         candidates, filter_warnings = filter_monuments(nodes, context)
         if not candidates:
+
             raise CircuitAgentError(
-                "Aucun circuit réalisable avec ces contraintes."
-            )
+            "Aucun circuit réalisable avec ces contraintes."
+          )
+
+        if required_ids:
+
+            candidates = {k: v for k, v in candidates.items() if k in required_ids}
+        if not candidates:
+
+            raise CircuitAgentError("Les monuments sélectionnés ne respectent pas les contraintes.")
+        from dataclasses import replace
+        context = replace(context, max_stops=len(candidates))
 
         scores = score_monuments(
             candidates,
@@ -121,7 +131,7 @@ class CircuitAgent:
             mutation_rate=self._settings.circuit_ga_mutation_rate,
             crossover_rate=self._settings.circuit_ga_crossover_rate,
             elitism=self._settings.circuit_ga_elitism,
-            max_stops=request.max_stops,
+            max_stops=context.max_stops,
         )
         optimizer = GeneticOptimizer(
             candidates=candidates,

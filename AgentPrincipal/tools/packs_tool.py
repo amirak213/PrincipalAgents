@@ -14,6 +14,7 @@ from collections import defaultdict
 import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
+from typing import Optional
 
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
 
@@ -136,7 +137,7 @@ def _normalize(s: str) -> str:
     return s
 
 
-def match_location(pack_lieu: str, detected_loc: str) -> bool:
+def match_location(pack_lieu: Optional[str], detected_loc: Optional[str]) -> bool:
     """Retourne True si le lieu du pack contient le lieu détecté."""
     if not pack_lieu or not detected_loc:
         return False
@@ -252,7 +253,7 @@ def _pad_line(text: str, width: int) -> str:
 def format_pack_card(p: dict, lang: str = "FR") -> str:
     """Formatte un pack unique sous forme de carte textuelle sans afficher les Partenaires."""
     labels = _LABELS.get(lang, _LABELS["FR"])
-    
+
     emoji_map = {
         'circuit_patrimonial': '🏛️',
         'atelier_vr_ar': '🕶️',
@@ -264,53 +265,53 @@ def format_pack_card(p: dict, lang: str = "FR") -> str:
         'evenementiel': '🎉',
         'agenda_culturel': '📅',
     }
-    emoji = emoji_map.get(p.get('categorie'), '🎒')
+    emoji = emoji_map.get(p.get("categorie", ""), "🎒")
     title = f"{emoji}  {p['nom_pack']}"
-    
+
     # Largeur fixe interne de la carte
     width = 42
-    
+
     lines = []
     lines.append('┌' + '─' * width + '┐')
-    
+
     # Titre du Pack
     title_wrapped = textwrap.wrap(title, width=width)
     for tl in title_wrapped:
         lines.append('│ ' + _pad_line(tl, width) + ' │')
-        
+
     lines.append('├' + '─' * width + '┤')
-    
+
     # Description
     desc = p.get('descriptif', '')
     desc_wrapped = textwrap.wrap(desc, width=width)
     for dl in desc_wrapped:
         lines.append('│ ' + _pad_line(dl, width) + ' │')
-        
+
     # Ligne blanche de séparation
     lines.append('│ ' + _pad_line('', width) + ' │')
-    
+
     # Infos facultatives (Partenaires retiré !)
     if p.get('duree'):
         duration_str = f"{labels['duration']}{p['duree']}"
         for l in textwrap.wrap(duration_str, width=width):
             lines.append('│ ' + _pad_line(l, width) + ' │')
-            
+
     if p.get('capacite_personnes'):
         cap_str = labels['capacity'].format(n=p['capacite_personnes'])
         for l in textwrap.wrap(cap_str, width=width):
             lines.append('│ ' + _pad_line(l, width) + ' │')
-            
+
     if p.get('public_cible'):
         audience_str = f"{labels['audience']}{p['public_cible']}"
         for l in textwrap.wrap(audience_str, width=width):
             lines.append('│ ' + _pad_line(l, width) + ' │')
-            
+
     if p.get('lieu'):
         lieu_clean = p['lieu'].replace(', ', ' · ')
         lieu_str = f"{labels['location']}{lieu_clean}"
         for l in textwrap.wrap(lieu_str, width=width):
             lines.append('│ ' + _pad_line(l, width) + ' │')
-            
+
     lines.append('└' + '─' * width + '┘')
     return '\n'.join(lines)
 
@@ -321,7 +322,43 @@ def get_filter_question(lang: str = "FR") -> str:
     return f"{labels['filter_question']}\n\n{labels['filter_options']}"
 
 
-def format_packs_response(packs: list[dict], lang: str = "FR", category: str = None, location: str = None) -> str:
+def filter_packs(packs: list[dict], category: str | None = None, location: str | None = None) -> list[dict]:
+    """Filtre les packs par catégorie et/ou lieu (logique extraite de format_packs_response)."""
+    if category:
+        filtered_codes = _CATEGORY_MAPPING.get(category, [])
+        packs = [p for p in packs if p.get("code_pack") in filtered_codes]
+    if location:
+        packs = [p for p in packs if match_location(p.get("lieu", ""), location)]
+    return packs
+
+
+_EMOJI_MAP = {
+    'circuit_patrimonial': '🏛️', 'atelier_vr_ar': '🕶️', 'pack_scolaire': '🏫',
+    'pack_famille': '👨‍👩‍👧', 'pack_ia': '🤖', 'circuit_gamifie': '🎮',
+    'atelier_artistique': '🎨', 'evenementiel': '🎉', 'agenda_culturel': '📅',
+}
+
+
+def pack_to_card_dict(p: dict) -> dict:
+    """Convertit un pack DB en dict léger prêt pour le frontend (JSON, pas d'ASCII art)."""
+    return {
+        "code": p.get("code_pack"),
+        "title": p.get("nom_pack"),
+        "emoji": _EMOJI_MAP.get(p.get("categorie", ""), "🎒"),
+        "description": p.get("descriptif"),
+        "duration": p.get("duree"),
+        "capacity": p.get("capacite_personnes"),
+        "audience": p.get("public_cible"),
+        "location": p.get("lieu"),
+    }
+
+
+def format_packs_response(
+    packs: list[dict],
+    lang: str = "FR",
+    category: Optional[str] = None,
+    location: Optional[str] = None,
+) -> str:
     """
     Formate la liste de packs sous forme de cartes Markdown en appliquant le filtrage par catégorie et/ou lieu.
     """
