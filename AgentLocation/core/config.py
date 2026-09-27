@@ -1,12 +1,26 @@
 from __future__ import annotations
+from functools import lru_cache
+from pathlib import Path
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _resolve_env_files() -> tuple[str, ...]:
+    candidates = (Path(r"E:\claude\.env"), _BASE_DIR / ".env")
+    return tuple(str(path) for path in candidates if path.exists())
 
 class Settings(BaseSettings):
     # FIX CORS : restreindre les origines autorisées en production
     # Mettre ALLOWED_ORIGINS=https://dourbia.tn,https://app.dourbia.tn dans .env
     allowed_origins: list[str] = ["*"]
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
-    groq_api_key: str = ""
+    model_config = SettingsConfigDict(env_file=_resolve_env_files() or (str(_BASE_DIR / ".env"),),
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+    groq_api_key: str = Field(validation_alias="GROQ_API_KEY_LOCATION", default="")
     groq_model: str = "llama-3.1-8b-instant"
     groq_model_fast: str = "llama-3.1-8b-instant"
     groq_model_guard: str = "llama-guard-3-8b"
@@ -39,4 +53,9 @@ class Settings(BaseSettings):
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     vector_top_k: int = 5
 
-settings = Settings()
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()

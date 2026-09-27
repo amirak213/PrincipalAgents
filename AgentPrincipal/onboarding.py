@@ -47,6 +47,32 @@ _TARIFS_VALEURS = frozenset(
 _TRANSPORT_VALEURS = frozenset({"a_pied", "velo", "voiture", "autre"})
 
 
+_TARIF_ALIASES = {
+    "résident": "resident",
+    "resident": "resident",
+    "tunisien": "resident",
+    "étudiant": "etudiant",
+    "etudiant": "etudiant",
+    "étranger": "etranger",
+    "etranger": "etranger",
+    "enseignant": "enseignant",
+    "retraité": "retraite",
+    "retraite": "retraite",
+    "enfant": "enfant",
+}
+
+
+def detect_tarif(message: str) -> str | None:
+    """Détecte une catégorie tarifaire explicite dans un texte utilisateur."""
+    msg = (message or "").lower().strip()
+    for alias, tarif in _TARIF_ALIASES.items():
+        if alias in msg:
+            return tarif
+    if msg in _TARIFS_VALEURS:
+        return msg
+    return None
+
+
 def _parse_json_robuste(raw: str) -> dict:
     raw = raw.strip()
     if raw.startswith("{"):
@@ -168,25 +194,7 @@ def _parser_champ_local(champ: str, message: str) -> object | None:
         return None
 
     if champ == "tarif":
-        mapping = {
-            "résident": "resident",
-            "resident": "resident",
-            "tunisien": "resident",
-            "étudiant": "etudiant",
-            "etudiant": "etudiant",
-            "étranger": "etranger",
-            "etranger": "etranger",
-            "enseignant": "enseignant",
-            "retraité": "retraite",
-            "retraite": "retraite",
-            "enfant": "enfant",
-        }
-        for cle, val in mapping.items():
-            if cle in msg:
-                return val
-        if msg in _TARIFS_VALEURS:
-            return msg
-        return None
+        return detect_tarif(msg)
 
     return None
 
@@ -257,8 +265,9 @@ async def extraire_entites_probing(message: str, champ_attendu: str) -> dict:
             asyncio.to_thread(
                 _groq.chat.completions.create,
                 model=MODEL_FAST,
-                max_tokens=120,
+                max_tokens=300,
                 temperature=0.0,
+                reasoning_effort="low",
                 messages=[
                     {"role": "system", "content": SYSTEM_EXTRACTION_PROBING + prompt_champ},
                     {"role": "user", "content": message},

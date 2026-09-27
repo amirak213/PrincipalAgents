@@ -14,7 +14,7 @@ _REAL_STDOUT = sys.stdout
 sys.stdout = sys.stderr
 
 DOURBIA = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "dourbia_v10_final")
+    os.path.join(os.path.dirname(__file__), "..", "AgentLocation")
 )
 sys.path.insert(0, DOURBIA)
 os.chdir(DOURBIA)

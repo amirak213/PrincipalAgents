@@ -1,10 +1,9 @@
- 
 from __future__ import annotations
- 
+
 import logging
 from dataclasses import dataclass
 from typing import Any
- 
+
 from app.config import Settings
 from app.llm.llm_client import (
     ChatMessage,
@@ -23,11 +22,11 @@ from app.rag.web_search_decision import (
     user_requests_lookup,
     user_requests_web_search,
 )
- 
+
 logger = logging.getLogger(__name__)
- 
+
 _TOOL_NAME = "classify_historical_query_intent"
- 
+
 CLASSIFY_INTENT_TOOL: ToolDefinition = {
     "name": _TOOL_NAME,
     "description": (
@@ -100,8 +99,8 @@ CLASSIFY_INTENT_TOOL: ToolDefinition = {
         ],
     },
 }
- 
- 
+
+
 @dataclass(frozen=True)
 class QueryIntentFlags:
     is_domain_related: bool
@@ -112,15 +111,15 @@ class QueryIntentFlags:
     requests_event_or_schedule: bool
     user_requests_lookup: bool
     source: str  # "llm" ou "regex_fallback", utile pour les logs/observabilité
- 
- 
+
+
 def classify_query_intent(
     llm_client: LLMClient,
     user_query: str,
     memory_context: dict[str, Any],
 ) -> QueryIntentFlags:
     """Classifie l'intention via tool-calling LLM, avec fallback regex.
- 
+
     Ne lève jamais d'exception : toute erreur (provider down, JSON invalide,
     champ manquant) retombe sur `_classify_via_regex`, qui donne exactement
     le même comportement qu'avant l'introduction du tool-calling.
@@ -133,8 +132,8 @@ def classify_query_intent(
             exc,
         )
         return _classify_via_regex(user_query, memory_context)
- 
- 
+
+
 def _classify_via_llm(
     llm_client: LLMClient,
     user_query: str,
@@ -153,24 +152,29 @@ def _classify_via_llm(
         },
         {"role": "user", "content": user_query},
     ]
- 
+
     response = llm_client.complete_with_tools(
         messages,
         [CLASSIFY_INTENT_TOOL],
         tool_choice="required",
         temperature=0.0,
-        max_tokens=256,
+        max_tokens=500,
     )
- 
+    if response.finish_reason == "length":
+        raise ValueError(
+            f"LLM response truncated (finish_reason=length) during intent "
+            f"classification; tool_calls={len(response.tool_calls)}."
+     )
+
     if not response.tool_calls:
         raise ValueError("LLM did not return a tool call for intent classification.")
- 
+
     call = next(
         (tc for tc in response.tool_calls if tc.name == _TOOL_NAME),
         response.tool_calls[0],
     )
     args = call.arguments
- 
+
     return QueryIntentFlags(
         is_domain_related=bool(args["is_domain_related"]),
         explicit_web_request=bool(args["explicit_web_request"]),
@@ -181,8 +185,8 @@ def _classify_via_llm(
         user_requests_lookup=bool(args["user_requests_lookup"]),
         source="llm",
     )
- 
- 
+
+
 def _classify_via_regex(
     user_query: str,
     memory_context: dict[str, Any],
@@ -198,8 +202,8 @@ def _classify_via_regex(
         user_requests_lookup=user_requests_lookup(user_query),
         source="regex_fallback",
     )
- 
- 
+
+
 def should_use_web_search_from_flags(
     flags: QueryIntentFlags,
     user_query: str,
@@ -215,31 +219,31 @@ def should_use_web_search_from_flags(
     disponible telle quelle en fallback/tests)."""
     if flags.explicit_web_request:
         return True
- 
+
     if not flags.is_domain_related:
         return False
- 
+
     if not settings.web_search_enabled:
         return False
- 
+
     if flags.requests_archaeology_news:
         return True
- 
+
     local_relevant = local_chunks_relevant_to_query(
         user_query, retrieved_chunks, memory_context
     )
- 
+
     if flags.is_art_or_culture and not local_relevant:
         return True
- 
+
     if flags.is_historical_figure and not local_relevant:
         return True
- 
+
     if flags.requests_event_or_schedule or (
         flags.user_requests_lookup and flags.is_domain_related
     ):
         return True
- 
+
     return is_local_context_insufficient(
         retrieved_chunks,
         best_score,

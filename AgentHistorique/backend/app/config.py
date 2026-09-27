@@ -8,7 +8,7 @@ _PROJECT_ROOT = _BACKEND_DIR.parent
 
 
 def _resolve_env_files() -> tuple[str, ...]:
-    candidates = (_BACKEND_DIR / ".env", _PROJECT_ROOT / ".env")
+    candidates = (Path(r"E:\claude\.env"), _BACKEND_DIR / ".env")
     return tuple(str(path) for path in candidates if path.exists())
 
 
@@ -24,13 +24,12 @@ class Settings(BaseSettings):
     debug: bool = False
     database_url: str = (
         Field(
-             default="postgresql+psycopg://postgres:postgres@localhost:5433/historical_guide",
+             default="postgresql+psycopg://postgres:dourbia@localhost:5433/dourbia",
              validation_alias="CIRCUIT_DATABASE_URL",
         )
      )
-    
+
     database_connect_timeout_seconds: float = 5.0
-    
 
     embedding_provider: str = "e5"
     embedding_model_name: str = "intfloat/multilingual-e5-small"
@@ -38,11 +37,20 @@ class Settings(BaseSettings):
     embedding_batch_size: int = 32
 
     llm_provider: str = "groq"
-    llm_model_name: str = "llama-3.1-8b-instant"
-    llm_api_key: str = ""
+    llm_model_name: str = Field(
+        default="openai/gpt-oss-20b",
+        validation_alias="GROQ_MODEL_FAST",
+    )
+    llm_api_key: str = Field(
+        default="",
+        validation_alias="GROQ_API_KEY_HISTORIQUE",
+    )
+
     llm_base_url: str = ""
     llm_temperature: float = 0.2
-    llm_max_tokens: int = 300
+    llm_max_tokens: int = 700
+    llm_reasoning_effort: str = "low"
+    llm_include_reasoning: bool = False
     llm_timeout_seconds: float = 30.0
     llm_structured_output: bool = False
 
@@ -64,7 +72,10 @@ class Settings(BaseSettings):
     circuit_ga_mutation_rate: float = 0.15
     circuit_ga_crossover_rate: float = 0.8
     circuit_ga_elitism: bool = True
-    
+
+    ors_api_key: str = ""
+    ors_profile_batch_size: int = 25
+    ors_request_delay_seconds: float = 1.5
 
     cors_origins: list[str] = [
         "http://localhost:5173",

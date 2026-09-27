@@ -15,7 +15,7 @@ const guideIcon = L.divIcon({
 });
 
 export default function CircuitMapPanel() {
-  const { activeCircuit, guideEnabled } = useWorkspace();
+  const { activeCircuit, guideEnabled, openGuideWithQuestion } = useWorkspace();
   console.log("CircuitMapPanel activeCircuit:", activeCircuit);
 
   const [geoError, setGeoError] = useState<string | null>(null);
@@ -23,11 +23,8 @@ export default function CircuitMapPanel() {
   const [positions, setPositions] = useState<[number, number][]>([]);
   const watchIdRef = useRef<number | null>(null);
 
-  // Reproduce le pattern original : lecture de la session depuis le sessionStorage
-  const sessionId = useMemo(
-    () => window.sessionStorage.getItem("chat-session-id") ?? "",
-    [],
-  );
+  // Relu à chaque rendu : chat-session-id n'existe qu'après la 1re réponse du chat
+  const sessionId = window.sessionStorage.getItem("chat-session-id") ?? "";
 
   // Convertit WizardCircuitSummary → CircuitRecommendResponse pour CircuitRouteLayer
   const previewResult = useMemo<CircuitRecommendResponse | null>(() => {
@@ -64,6 +61,7 @@ export default function CircuitMapPanel() {
   }, [activeCircuit, sessionId]);
 
   // Géolocalisation : s'active uniquement quand guideEnabled est true
+  const lastTriggeredMonumentRef = useRef<string | null>(null);
   useEffect(() => {
     if (!guideEnabled || typeof navigator === "undefined" || !navigator.geolocation) {
       return;
@@ -79,7 +77,14 @@ export default function CircuitMapPanel() {
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
         langue: "FR",
-      }).catch(() => undefined);
+      })
+        .then((res) => {
+          if (res.triggered && res.monument && lastTriggeredMonumentRef.current !== res.monument) {
+            lastTriggeredMonumentRef.current = res.monument;
+            openGuideWithQuestion(`Parle-moi de ${res.monument}`);
+          }
+        })
+        .catch(() => undefined);
     };
 
     const error = (err: GeolocationPositionError) => {
@@ -107,6 +112,7 @@ export default function CircuitMapPanel() {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
+      lastTriggeredMonumentRef.current = null;
     };
   }, [guideEnabled, sessionId]);
 

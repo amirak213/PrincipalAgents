@@ -26,6 +26,9 @@ logging.basicConfig(
 )
 log = logging.getLogger("dourbia.main")
 
+from dotenv import load_dotenv
+load_dotenv(r"E:\claude\.env")
+
 from api.routes import app  # noqa
 from core.config import settings  # noqa
 

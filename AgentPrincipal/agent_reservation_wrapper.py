@@ -14,7 +14,7 @@ WORKER_PATH = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "agent_reservation_worker.py")
 )
 DOURBIA_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "dourbia_v10_final")
+    os.path.join(os.path.dirname(__file__), "..", "AgentLocation")
 )
 
 

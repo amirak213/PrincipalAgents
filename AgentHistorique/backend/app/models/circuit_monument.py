@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
@@ -30,7 +30,7 @@ class CircuitMonument(Base, TimestampMixin):
     )
     monument_id: Mapped[str] = mapped_column(
         String,
-        ForeignKey("monuments.id_monument", ondelete="CASCADE"),
+        ForeignKey("monuments.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -41,7 +41,7 @@ class CircuitMonument(Base, TimestampMixin):
 
     @property
     def normalized_monument_id(self) -> str:
-        """Convert the live double-valued monument id to the text form used by monuments.id_monument."""
+        """Convert the live double-valued monument id to the text form used by monuments.id."""
         if self.monument_id is None:
             return ""
 

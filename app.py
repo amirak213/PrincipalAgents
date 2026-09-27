@@ -6,13 +6,16 @@ sys.path.insert(
 )
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from pydantic import BaseModel, Field
 import uuid
 from AgentPrincipal.chat import chat
 from typing import Optional, List, Any
-from langdetect import detect, DetectorFactory
+from langdetect import detect_langs, DetectorFactory
 from deep_translator import GoogleTranslator
 from AgentPrincipal.geo_service import get_geo_service
 from AgentPrincipal.orchestrateur import (
@@ -28,43 +31,62 @@ from AgentPrincipal.session_memory import (
     get_profile,
     update_profile,
 )
-from circuit_engine import (
-    recommend_circuit,
-    load_circuit_data,
-    CircuitProfil,
-    MONUMENTS_CACHE,
-)
+
 import asyncio
+import re
+import traceback
+import time
 from contextlib import asynccontextmanager
 from AgentPrincipal.wizard_state_machine import (
     WizardState,
     WizardStore,
     question_for_state,
 )
-from AgentPrincipal.redis_client import get_redis
+from AgentPrincipal.redis_client import get_redis, close_redis
 
 _circuit_v2_mods = _load_circuit_v2_modules()
 CircuitRecommendationResponse = _circuit_v2_mods["CircuitRecommendationResponse"]
-
+limiter = Limiter(key_func=get_remote_address)
 # Set seed for consistent language detection
 DetectorFactory.seed = 0
 
-
+async def _purge_loop():
+    from AgentPrincipal.session_memory import purge_inactive_sessions, _sessions
+    while True:
+        await asyncio.sleep(1800)  # toutes les 30 min
+        purge_inactive_sessions()
+        # Nettoyage des dicts locaux à app.py, alignés sur les sessions encore actives
+        active_ids = set(_sessions.keys())
+        for d in (session_languages, session_announced):
+            for sid in list(d.keys()):
+                if sid not in active_ids:
+                    d.pop(sid, None)
 # Initialize translator
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("[STARTUP] Préchargement de l'orchestrateur (modèle embeddings)...")
     get_orchestrateur()
     print("[STARTUP] Orchestrateur prêt.")
+    purge_task = asyncio.create_task(_purge_loop())
     yield
+    print("[SHUTDOWN] Fermeture des connexions...")
+    purge_task.cancel()
+    await close_redis()
+    print("[SHUTDOWN] Terminé.")
 
 
 app = FastAPI(title="Dourbia Chatbot API", version="1.0.0", lifespan=lifespan)
-
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[o.strip()
+        for o in os.environ.get(
+            "FRONTEND_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+        ).split(",")
+        if o.strip()
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -76,11 +98,79 @@ sessions = {}
 
 # Translation utility functions
 
+_translation_cache: dict[tuple[str, str, str], str] = {}
+_translation_blocked_until = 0.0
+TRANSLATION_COOLDOWN_SECONDS = 120
+TRANSLATION_CACHE_MAX = 1000
+
+def _translate(text: str, source_lang: str, target_lang: str) -> str:
+    global _translation_blocked_until
+    cache_key = (text, source_lang, target_lang)
+    cached = _translation_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if time.monotonic() < _translation_blocked_until:
+        return text
+    max_attempts = 2
+    for attempt in range(max_attempts):
+        try:
+            result = GoogleTranslator(source=source_lang, target=target_lang).translate(text)
+            if len(_translation_cache) >= TRANSLATION_CACHE_MAX:
+                try:
+                    _translation_cache.pop(next(iter(_translation_cache)))
+                except (RuntimeError, KeyError, StopIteration):
+                    pass
+            _translation_cache[cache_key] = result
+            return result
+        except Exception as e:
+            err_msg = str(e).lower()
+            is_rate_limit = "429" in str(e) or "too many requests" in err_msg
+            if is_rate_limit and attempt < max_attempts - 1:
+                time.sleep(2 ** attempt)
+                continue
+            if is_rate_limit:
+                _translation_blocked_until = time.monotonic() + TRANSLATION_COOLDOWN_SECONDS
+                print(f"[Dourbia] Translation rate limit reached. Blocking translations for {TRANSLATION_COOLDOWN_SECONDS} seconds.")
+            print(f"[Dourbia] Translation ERROR ({source_lang}->{target_lang}): {e}")
+            return text
+
+    return text
+
+
+SUPPORTED_LANGUAGES = {"fr", "en", "ar", "it", "de"}
+LANGUAGE_CONFIDENCE_THRESHOLD = 0.70
+# Mots-outils des langues latines/germaniques non françaises : évite qu'un message
+# français fait de noms propres (ex. "Thermes d'Antonin") soit pris pour de l'anglais.
+_LANG_MARKERS = {
+    "en": {"the", "is", "are", "what", "tell", "about", "for", "and", "would",
+           "how", "where", "when", "can", "you", "does", "with", "this",
+           "that", "of", "my", "i"},
+    "it": {"che", "di", "per", "sono", "quale", "come", "della"},
+    "de": {"der", "das", "und", "ist", "ich", "wie", "nicht", "mit"},
+}
+
 
 def detect_language(text: str) -> str:
-    """Detect the language of the input text"""
+    """Detect a supported language, falling back to French when uncertain."""
     try:
-        return detect(text)
+        candidates = detect_langs(text)
+        if not candidates:
+            return "fr"
+
+        candidate = candidates[0]
+        if (
+            candidate.lang not in SUPPORTED_LANGUAGES
+            or candidate.prob < LANGUAGE_CONFIDENCE_THRESHOLD
+        ):
+            return "fr"
+
+        if candidate.lang in _LANG_MARKERS:
+            words = set(re.findall(r"[^\W\d_]+", text.lower()))
+            if not words & _LANG_MARKERS[candidate.lang]:
+                return "fr"
+
+        return candidate.lang
     except Exception as e:
         print(f"[Dourbia] Language detection ERROR: {e}")
         return "fr"
@@ -90,22 +180,14 @@ def translate_to_french(text: str, source_lang: str) -> str:
     """Translate text to French"""
     if source_lang == "fr":
         return text
-    try:
-        return GoogleTranslator(source=source_lang, target="fr").translate(text)
-    except Exception as e:
-        print(f"[Dourbia] Translation ERROR (to_fr): {e}")
-        return text
+    return _translate(text, source_lang, "fr")
 
 
 def translate_from_french(text: str, target_lang: str) -> str:
     """Translate text from French to target language"""
     if target_lang == "fr":
         return text
-    try:
-        return GoogleTranslator(source="fr", target=target_lang).translate(text)
-    except Exception as e:
-        print(f"[Dourbia] Translation ERROR (from_fr): {e}")
-        return text
+    return _translate(text, "fr", target_lang)
 
 class PackCard(BaseModel):
     code: Optional[str] = None
@@ -230,14 +312,9 @@ class CircuitRecommendRequest(BaseModel):
     max_stops: Optional[int] = None
 
 
-
-# --- Logique métier et Cache ---
-CIRCUITS_CACHE = []
-PERTINENCE_CALC = None
-
-
 @app.post("/api/circuits/recommend", response_model=CircuitRecommendationResponse)
-async def recommend_circuit_endpoint(req: CircuitRecommendRequest):
+@limiter.limit("20/minute")
+async def recommend_circuit_endpoint(request: Request, req: CircuitRecommendRequest):
     mods = _load_circuit_v2_modules()
     NewRequest = mods["CircuitRecommendationRequest"]
     NewPreferences = mods["CircuitPreferences"]
@@ -309,52 +386,38 @@ session_languages = {}
 session_announced: dict[str, set] = {}
 
 
-def _matches_city(row: dict, city: Optional[str]) -> bool:
-    if not city:
-        return True
-
-    city_key = str(city).strip().lower()
-    if city_key == "carthage":
-        return True
-
-    if city_key == "la_marsa":
-        name = str(row.get("nom", "")).lower()
-        return "marsa" in name
-
-    return True
-
-
 def _get_sorted_monument_options(
     offset: int = 0, limit: int = 5, city: Optional[str] = None
 ) -> tuple[List[WizardOption], bool]:
-    """Retourne les monuments triés par popularité décroissante, paginés."""
-    load_circuit_data()
+    """Retourne les monuments triés par priorité décroissante, paginés."""
+    mods = _load_circuit_v2_modules()
+    SessionLocal = mods["SessionLocal"]
+    Monument = mods["Monument"]
 
-    def _popularite(row: dict) -> float:
-        try:
-            return float(str(row.get("popularite", "0")).replace(",", "."))
-        except (ValueError, TypeError):
-            return 0.0
+    db = SessionLocal()
+    try:
+        query = db.query(Monument)
+        if city:
+            city_key = str(city).strip().lower()
+            if city_key == "la_marsa":
+                query = query.filter(Monument.name_fr.ilike("%marsa%"))
+            # "carthage" et tout autre valeur : pas de filtre (comportement identique à _matches_city)
 
-    indexed = [
-        (idx, row) for idx, row in enumerate(MONUMENTS_CACHE) if _matches_city(row, city)
-    ]
-    indexed.sort(key=lambda pair: _popularite(pair[1]), reverse=True)
+        monuments = query.order_by(Monument.priority.desc().nullslast()).all()
+    finally:
+        db.close()
 
-    page = indexed[offset : offset + limit]
-    has_more = (offset + limit) < len(indexed)
+    page = monuments[offset : offset + limit]
+    has_more = (offset + limit) < len(monuments)
 
     options = [
         WizardOption(
-            value=str(idx),
-            label=row.get("nom", "Inconnu"),
-            meta={"popularite": _popularite(row)},
+            value=m.id_str,
+            label=m.name_fr or "Inconnu",
+            meta={"priority": float(m.priority) if m.priority is not None else None},
         )
-        for idx, row in page
+        for m in page
     ]
-    page = indexed[offset : offset + limit]
-    has_more = (offset + limit) < len(indexed)
-    print(f"[DEBUG] MONUMENTS_CACHE len={len(MONUMENTS_CACHE)}, page len={len(page)}")
     return options, has_more
 
 
@@ -537,24 +600,28 @@ def _translate_chat_response(response_fr: str, detected_language: str) -> str:
 
 
 @app.post("/api/chat", response_model=ChatResponse)
-async def chat_endpoint(request: ChatRequest):
+@limiter.limit("20/minute")
+async def chat_endpoint(request: Request, req: ChatRequest):
     try:
 
-        message = request.message or ""
-        if not message and not request.action:
+        message = req.message or ""
+        if not message and not req.action:
             raise HTTPException(status_code=400, detail="Message is required")
 
-        session_id = request.session_id or str(uuid.uuid4())
+        session_id = req.session_id or str(uuid.uuid4())
         if session_id not in sessions:
             sessions[session_id] = True
 
-        if request.action:
+        if req.action:
             # Payload structuré (clic sur card) — pas de traduction nécessaire,
             # question_for_state() gère déjà le texte de sortie en FR
             detected_language = session_languages.get(session_id, "fr")
+
+            if req.language and req.language in SUPPORTED_LANGUAGES:
+                detected_language = req.language
             session_languages[session_id] = detected_language
 
-            response_fr = await chat(session_id, message, action=request.action)
+            response_fr = await chat(session_id, message, action=req.action)
             response = (
                 response_fr  # pas de traduction pour l'instant sur les réponses wizard
             )
@@ -562,7 +629,9 @@ async def chat_endpoint(request: ChatRequest):
             if session_id in session_languages:
                 detected_language = session_languages[session_id]
             else:
-                if len(message.split()) >= 4:
+                if req.language and req.language in SUPPORTED_LANGUAGES:
+                    detected_language = req.language
+                elif len(message.split()) >= 4:
                     detected_language = detect_language(message)
                 else:
                     detected_language = "fr"  # fallback par défaut
@@ -570,13 +639,15 @@ async def chat_endpoint(request: ChatRequest):
 
             print(f"[Dourbia] Detected language: {detected_language}")
 
-            message_fr = translate_to_french(message, detected_language)
+            message_fr = await asyncio.to_thread(
+                translate_to_french, message, detected_language)
             print(f"[Dourbia] Original message: {message}")
             print(f"[Dourbia] Translated to FR: {message_fr}")
 
-            response_fr = await chat(session_id, message_fr, action=request.action)
+            response_fr = await chat(session_id, message_fr, action=req.action)
 
-        response = _translate_chat_response(response_fr, detected_language)
+        response =await asyncio.to_thread(
+            _translate_chat_response, response_fr, detected_language)
 
         profil = get_profile(session_id)
         wizard_store = WizardStore(await get_redis())
@@ -602,7 +673,7 @@ async def chat_endpoint(request: ChatRequest):
                 last_mentioned_monuments=profil.get("lieux_vus", []),
                 primary_site_id=profil.get("monument_en_attente_id"),
                 primary_site_name=profil.get("monument_en_attente_nom"),
-                last_substantive_user_message=request.message,
+                last_substantive_user_message=req.message,
             ),
             suggested_actions=[],
             latency_ms=None,
@@ -610,32 +681,44 @@ async def chat_endpoint(request: ChatRequest):
             wizard_ui=wizard_ui,
             packs=packs_ui,
         )
+
+    except HTTPException:
+        raise
+
     except Exception as e:
         print(f"[Dourbia] Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Une erreur interne est survenue.")
 
 
 @app.post("/api/position", response_model=PositionResponse)
-async def position_endpoint(request: PositionRequest):
+@limiter.limit("30/minute")
+async def position_endpoint(request: Request, req: PositionRequest):
     """Reçoit une mise à jour GPS et déclenche un événement de proximité si un monument du circuit actif est à portée."""
-    session_id = request.user_id or request.session_id or ""
+    session_id = req.user_id or req.session_id or ""
     if not session_id:
         return PositionResponse(triggered=False)
 
     profil = get_profile(session_id)
+    etapes = profil.get("circuit_etapes") or []
     circuit_id = profil.get("circuit_confirme_id") or get_active_circuit(session_id)
-    if not circuit_id:
+    if not etapes and not circuit_id:
         return PositionResponse(triggered=False)
 
     try:
         geo = get_geo_service()
-        nearby = await geo.get_nearby_monuments_for_circuit(
-            lat=request.latitude,
-            lon=request.longitude,
-            circuit_id=str(circuit_id),
-            langue=(request.langue or "FR").upper(),
-            rayon_override_m=100,
-        )
+        if etapes:
+            nearby = geo.get_nearby_from_stops(
+                lat=req.latitude, lon=req.longitude, stops=etapes, rayon_m=100
+            )
+        else:
+            nearby = await geo.get_nearby_monuments_for_circuit(
+                lat=req.latitude,
+                lon=req.longitude,
+                circuit_id=str(circuit_id),
+                langue=(req.langue or "FR").upper(),
+                rayon_override_m=100,
+            )
     except Exception as exc:
         print(f"[Dourbia] Erreur /api/position : {exc}")
         return PositionResponse(triggered=False)
@@ -643,13 +726,21 @@ async def position_endpoint(request: PositionRequest):
     if not nearby:
         return PositionResponse(triggered=False)
 
-    monument = nearby[0]
+    # Anti-spam : chaque monument n'est annoncé qu'une fois par session
+    deja_annonces = session_announced.setdefault(session_id, set())
+    monument = next(
+        (m for m in nearby if (m.get("id") or m.get("nom")) not in deja_annonces),
+        None,
+    )
+    if monument is None:
+        return PositionResponse(triggered=False)
+    deja_annonces.add(monument.get("id") or monument.get("nom"))
     orchestrateur = get_orchestrateur()
     await orchestrateur.handle_proximity_trigger(
         user_id=session_id,
         monument_id=str(monument.get("id", "")),
         monument_nom=monument.get("nom", "Monument"),
-        langue=(request.langue or "FR").upper(),
+        langue=(req.langue or "FR").upper(),
     )
 
     return PositionResponse(
@@ -661,7 +752,8 @@ async def position_endpoint(request: PositionRequest):
 
 
 @app.post("/api/sessions", response_model=SessionResponse)
-async def create_session():
+@limiter.limit("10/minute")
+async def create_session(request: Request):
     session_id = str(uuid.uuid4())
     sessions[session_id] = True
     return SessionResponse(session_id=session_id)
@@ -686,55 +778,60 @@ class MonumentsListResponse(BaseModel):
 
 
 @app.get("/api/monuments", response_model=MonumentsListResponse)
-async def get_monuments():
-    # On force le chargement du CSV au cas où cet endpoint est appelé en premier
-    load_circuit_data()
+@limiter.limit("60/minute")
+async def get_monuments(request: Request):
+   mods = _load_circuit_v2_modules()
+   SessionLocal = mods["SessionLocal"]
+   Monument = mods["Monument"]
 
-    result = []
-    for idx, row in enumerate(MONUMENTS_CACHE):
-        try:
-            lat = float(str(row["latitude"]).replace(",", "."))
-            lon = float(str(row["longitude"]).replace(",", "."))
-        except (ValueError, KeyError):
+   db = SessionLocal()
+   try:
+       
+        monuments = db.query(Monument).order_by(
+            Monument.priority.desc().nullslast()
+        ).all()
+   finally:
+        db.close()
+
+   result = []
+   for m in monuments:
+       
+        if m.latitude_float is None or m.longitude_float is None:
             continue
-
-        try:
-            duration = int(row.get("duree_visite_min", 0))
-        except ValueError:
-            duration = None
-
-        try:
-            pop = float(str(row.get("popularite", "0")).replace(",", "."))
-        except ValueError:
-            pop = None
 
         result.append(
             MonumentItemResponse(
-                id=idx,
-                name_fr=row.get("nom", "Inconnu"),
-                latitude=lat,
-                longitude=lon,
-                visit_duration_min=duration,
-                popularity=pop,
-                # Champs absents du CSV mais optionnels dans le front :
-                name_en=None,
-                name_ar=None,
-                dominant_period=None,
-                function=None,
-                image_url=None,
+                id=int(m.id_str),
+                name_fr=m.name_fr or "Inconnu",
+                name_en=m.name_en,
+                name_ar=m.name_ar,
+                latitude=m.latitude_float,
+                longitude=m.longitude_float,
+                visit_duration_min=(
+                    int(m.visit_duration_minutes)
+                    if m.visit_duration_minutes is not None
+                    else None
+                ),
+                dominant_period=m.dominant_period,
+                function=m.function,
+                popularity=(
+                    float(m.priority) if m.priority is not None else None
+                ),
+                image_url=m.panoramic_image_url,
             )
         )
 
-    return MonumentsListResponse(monuments=result)
+   return MonumentsListResponse(monuments=result)
 
 
 @app.post("/api/location", response_model=LocationResponse)
-async def location_endpoint(request: LocationRequest):
+@limiter.limit("30/minute")
+async def location_endpoint(request: Request, req: LocationRequest):
     """
     Endpoint appelé par le frontend toutes les 30s en mode guide terrain.
 
-    - Reçoit la position GPS de l'utilisateur
-    - Détecte les monuments dans un rayon de 150m
+    - Recoit la position GPS de l'utilisateur
+    - Detecte les monuments dans un rayon de 150m
     - Si un nouveau monument est trouvé (pas encore annoncé cette session)
       → retourne triggered=True avec le message qu'Aziz va prononcer
     - Sinon → triggered=False (le frontend ne fait rien)
@@ -742,10 +839,10 @@ async def location_endpoint(request: LocationRequest):
     Anti-spam : chaque monument n'est annoncé qu'une seule fois par session.
     """
     try:
-        session_id = request.session_id
-        lat = request.lat
-        lon = request.lon
-        langue = (request.langue or "FR").upper()
+        session_id = req.session_id
+        lat = req.lat
+        lon = req.lon
+        langue = (req.langue or "FR").upper()
 
         # Récupère ou crée le set des monuments déjà annoncés
         if session_id not in session_announced:
@@ -862,7 +959,8 @@ async def health_check():
 
 
 @app.get("/api/guide-status/{session_id}")
-async def guide_status(session_id: str):
+@limiter.limit("30/minute")
+async def guide_status(request: Request, session_id: str):
     """Le frontend poll ceci après chaque réponse chat pour savoir s'il doit démarrer le GPS."""
     profil = get_profile(session_id)
     return {
@@ -873,7 +971,10 @@ async def guide_status(session_id: str):
 
 
 @app.get("/api/wizard-options/{session_id}")
-async def wizard_options(session_id: str, offset: int = 0, limit: int = 5):
+@limiter.limit("30/minute")
+async def wizard_options(
+    request: Request, session_id: str, offset: int = 0, limit: int = 5
+):
     """Pagination read-only pour select_places — n'écrit jamais dans Redis."""
     wizard_store = WizardStore(await get_redis())
     wizard = await wizard_store.get(session_id)

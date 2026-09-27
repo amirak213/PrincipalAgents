@@ -7,3 +7,6 @@ dump.rdb
 frontend/dist/
 *.log
 node_modules/
+dourbia_v10_final/
+tests/
+tests_manuels/

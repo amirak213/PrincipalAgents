@@ -9,7 +9,8 @@ Pour la persistance PostgreSQL, les TODO sont marqués clairement.
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
+
 from typing import Optional
 from constants import HISTORY_WINDOW
 
@@ -194,6 +195,24 @@ def purge_session(session_id: str) -> None:
         del _sessions[session_id]
         log.info(f"[MEMORY] Session supprimée : {session_id}")
 
+SESSION_INACTIVITY_TTL = timedelta(hours=6)
+
+def purge_inactive_sessions(ttl: timedelta = SESSION_INACTIVITY_TTL) -> int:
+    """
+    Supprime les sessions inactives depuis plus de `ttl`.
+    Retourne le nombre de sessions purgées. Appelée périodiquement
+    par la tâche de fond du lifespan (app.py).
+    """
+    now = datetime.now()
+    to_purge = [
+        sid for sid, session in _sessions.items()
+        if now - session.get("last_active", now) > ttl
+    ]
+    for sid in to_purge:
+        purge_session(sid)
+    if to_purge:
+        log.info(f"[MEMORY] Purge auto : {len(to_purge)} session(s) inactive(s) supprimée(s)")
+    return len(to_purge)
 
 def set_active_circuit(session_id: str, circuit_id: str) -> None:
     """Enregistre le circuit actif pour cette session (mode guide GPS)."""

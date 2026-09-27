@@ -1,15 +1,15 @@
-version: '3.8'
-
+﻿
 services:
   db:
     image: pgvector/pgvector:pg16
     container_name: dourbia_db
+    restart: unless-stopped
     environment:
       POSTGRES_DB: dourbia
       POSTGRES_USER: dourbia
       POSTGRES_PASSWORD: dourbia
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -21,6 +21,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: dourbia_redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
@@ -32,7 +33,7 @@ services:
       retries: 5
 
   app:
-    build: .
+    build: ./AgentLocation
     container_name: dourbia_app
     restart: always
     ports:
@@ -40,7 +41,7 @@ services:
     env_file:
       - .env
     environment:
-      # Ces variables surchargent le .env — cruciales pour la communication inter-conteneurs
+      # Ces variables surchargent le .env â€” cruciales pour la communication inter-conteneurs
       - DATABASE_URL=postgresql://dourbia:dourbia@db:5432/dourbia
       - REDIS_URL=redis://redis:6379/0
     depends_on:

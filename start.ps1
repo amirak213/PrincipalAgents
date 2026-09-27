@@ -35,11 +35,18 @@ if (-not $docker) {
     Write-Host "  Docker deja actif" -ForegroundColor Green
 }
 
+# Conteneurs dourbia_db / dourbia_redis (arret automatique possible entre sessions)
+ Write-Host "  Demarrage conteneurs dourbia_db / dourbia_redis..." -ForegroundColor Yellow
+ docker start dourbia_db
+ docker start dourbia_redis
+ Start-Sleep -Seconds 3
+
 # AgentLocation (Yasmine)
 Write-Host "Lancement Yasmine (Location)..." -ForegroundColor Yellow
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd E:\claude\AgentLocation; python -m uvicorn api.routes:app --host 0.0.0.0 --port 5000"
 
 # AgentPrincipal (Chatbot)
 Write-Host "Lancement AgentPrincipal..." -ForegroundColor Cyan
-Set-Location "E:\claude\AgentPrincipal"
-python chat.py
+Set-Location "E:\claude"
+$env:PYTHONPATH="E:\claude"
+python -m AgentPrincipal.chat

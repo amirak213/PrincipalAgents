@@ -82,6 +82,20 @@ class ResponseEvaluator:
                 missing=["données valides"],
             )
 
+        # Chemin rapide déterministe : tous les steps planifiés ont renvoyé un résultat non vide, sans erreur.
+        # Le LLM ne voit qu'un statut (pas les données) : son verdict est instable, on ne lui délègue pas ce cas.
+        ok_results = [
+            r for r in tool_results
+            if r.get("result") and not r.get("result", {}).get("error")
+        ]
+        planned = len(plan.steps) if plan is not None and getattr(plan, "steps", None) else 0
+        if ok_results and len(ok_results) >= planned:
+            return EvalResult(
+                score=0.9,
+                is_sufficient=True,
+                reason="Tous les outils planifiés ont renvoyé des données valides.",
+                missing=[],
+            )
         # Évaluation LLM légère
         try:
             summary = json.dumps(
@@ -91,24 +105,33 @@ class ResponseEvaluator:
             )
 
             client, model = self._get_llm()
+            reasoning_kwargs = (
+                {"extra_body": {"reasoning_effort": "low", "include_reasoning": False}}
+                if "gpt-oss" in model
+                else {}
+            )
             resp = client.chat.completions.create(
-                model       = model,
-                messages    = [
+                model=model,
+                messages=[
                     {"role": "system", "content": EVALUATOR_SYSTEM},
-                    {"role": "user",   "content":
-                        f"Question : {query}\n"
+                    {
+                        "role": "user",
+                        "content": f"Question : {query}\n"
                         f"Intent du plan : {plan.intent}\n"
-                        f"Résumé des données : {summary}"
+                        f"Résumé des données : {summary}",
                     },
                 ],
-                max_tokens  = 150,
-                temperature = 0.0,
+                max_tokens=400,
+                temperature=0.0,
+                **reasoning_kwargs,
             )
 
             raw = resp.choices[0].message.content or "{}"
             d   = _safe_json_parse(raw)
 
-            score = float(d.get("score", 0.5))
+            if "score" not in d:
+                raise ValueError("Réponse évaluateur illisible")  # → règle déterministe (except ci-dessous)
+            score = float(d["score"])
             return EvalResult(
                 score         = score,
                 is_sufficient = score >= self.SCORE_THRESHOLD,

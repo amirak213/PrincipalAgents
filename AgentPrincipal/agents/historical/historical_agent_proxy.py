@@ -78,7 +78,7 @@ class HistoricalAgentProxy:
                 [sys.executable, "-m", "AgentPrincipal.agents.historical.worker"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=sys.stderr,
                 text=True,
                 encoding="utf-8",
                 bufsize=1,  # line-buffered
@@ -197,7 +197,18 @@ class HistoricalAgentProxy:
 
         # Propager une éventuelle erreur interne du worker
         if result[0].get("error"):
-            logger.warning("Worker historique erreur interne: %s", result[0]["error"])
+            logger.error(
+                "Worker historique erreur interne: %s (query=%r)",
+                result[0]["error"],
+                query[:120],
+            )
+        else:
+            logger.info(
+                "Worker historique réponse reçue: answer_len=%d sources=%d retrieval_score=%s",
+                len(result[0].get("answer") or ""),
+                len(result[0].get("sources") or []),
+                result[0].get("retrieval_score"),
+            )
 
         return result[0]
 

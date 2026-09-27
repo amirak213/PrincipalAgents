@@ -13,8 +13,9 @@ from app.llm.llm_client import LLMClient, LLMClientError, create_llm_client
 from app.rag.answer_parser import parse_llm_answer
 from app.rag.language_detection import resolve_answer_language
 from app.rag.language_messages import (
+    INSUFFICIENT_CONTEXT_ANSWERS,
     NO_ART_WEB_RESULTS_ANSWERS,
-    NOT_FOUND_ANSWERS,
+    NO_RELEVANT_WEB_RESULTS_ANSWERS,
     localized_action,
     localized_message,
 )
@@ -55,9 +56,16 @@ from app.rag.web_search_decision import (
     uses_demonstrative_reference,
     user_requests_lookup,
     user_requests_web_search,
-    user_requests_art_web_lookup,
 )
-from app.tools.web_search_tool import BaseWebSearchTool, WebSearchResult, create_web_search_tool
+from app.tools.web_search_tool import (
+    BaseWebSearchTool,
+    WebSearchResult,
+    create_web_search_tool,
+)
+from app.rag.query_intent_llm import (
+    classify_query_intent,
+    should_use_web_search_from_flags,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +110,7 @@ class HistoricalAgent:
         self._settings = settings or get_settings()
         self._retriever = retriever or SemanticRetriever(db)
         self._llm = llm
+        self._llm_client = llm
         self._web_search_tool = web_search_tool
         self._min_score = self._settings.rag_min_score
 
@@ -231,39 +240,33 @@ class HistoricalAgent:
             retrieved_chunks,
             context,
         )
-        explicit_web_request = user_requests_web_search(
-            cleaned_message
-        ) or user_requests_art_web_lookup(cleaned_message, context)
-        wants_web_search = should_use_web_search(
+        intent_flags = classify_query_intent(self._get_llm(), cleaned_message, context)
+        explicit_web_request = intent_flags.explicit_web_request
+        wants_web_search = should_use_web_search_from_flags(
+            intent_flags,
             cleaned_message,
             retrieved_chunks,
             best_score,
             context,
             settings=self._settings,
         )
-        needs_topic_web_supplement = requests_archaeology_news(
-            cleaned_message, context
-        ) or (
+        needs_topic_web_supplement = intent_flags.requests_archaeology_news or (
             not local_context_relevant
             and (
-                is_art_or_culture_query(cleaned_message, context)
-                or is_historical_figure_query(cleaned_message)
-                or requests_event_or_schedule(cleaned_message)
+                intent_flags.is_art_or_culture
+                or intent_flags.is_historical_figure
+                or intent_flags.requests_event_or_schedule
                 or (
-                    user_requests_lookup(cleaned_message)
-                    and is_domain_related_query(cleaned_message, context)
+                    intent_flags.user_requests_lookup and intent_flags.is_domain_related
                 )
             )
         )
-        local_adequate = local_sufficient and local_context_relevant
         use_web_search = wants_web_search and (
-            explicit_web_request or not local_adequate or needs_topic_web_supplement
+            explicit_web_request or not local_sufficient or needs_topic_web_supplement
         )
         web_search_results: list[WebSearchResult] = []
-        web_search_attempted = False
 
         if use_web_search:
-            web_search_attempted = True
             with StepTimer() as web_search_timer:
                 web_search_results = self._collect_web_search_results(
                     cleaned_message,
@@ -287,14 +290,9 @@ class HistoricalAgent:
                         best_score,
                     )
                 else:
-                    not_found = (
-                        NO_ART_WEB_RESULTS_ANSWERS
-                        if is_art_or_culture_query(cleaned_message, context)
-                        else NOT_FOUND_ANSWERS
-                    )
                     return HistoricalAgentResult(
                         answer=localized_message(
-                            not_found,
+                            NO_RELEVANT_WEB_RESULTS_ANSWERS,
                             answer_language,
                         ),
                         sources=sources,
@@ -312,46 +310,69 @@ class HistoricalAgent:
                         latency=latency,
                     )
 
-        if not local_adequate and not web_search_results and not use_web_search:
-            if is_domain_related_query(cleaned_message, context):
-                web_search_attempted = True
-                with StepTimer() as web_search_timer:
-                    web_search_results = self._collect_web_search_results(
+            if (
+                not web_search_results
+                and needs_topic_web_supplement
+                and is_art_or_culture_query(cleaned_message, context)
+                and not explicit_web_request
+            ):
+                filtered_sources = filter_sources_for_query(
+                    sources,
+                    cleaned_message,
+                    context,
+                )
+                return HistoricalAgentResult(
+                    answer=localized_message(
+                        NO_ART_WEB_RESULTS_ANSWERS,
+                        answer_language,
+                    ),
+                    sources=filtered_sources,
+                    suggested_actions=self._build_suggested_actions(
+                        filtered_sources,
+                        context,
+                        answer_language,
+                        cleaned_message,
+                    ),
+                    memory_updates=self._build_memory_updates(
+                        retrieved_chunks,
                         cleaned_message,
                         context,
-                    )
-                latency.web_search_ms = web_search_timer.elapsed_ms
-                sources = sources + self._map_web_sources(web_search_results)
+                    ),
+                    latency=latency,
+                )
 
-        if not local_adequate and not web_search_results and web_search_attempted:
-            logger.info(
-                "No answer after web search fallback (chunks=%s, best_score=%s)",
-                len(retrieved_chunks),
-                best_score,
-            )
-            not_found = (
-                NO_ART_WEB_RESULTS_ANSWERS
-                if is_art_or_culture_query(cleaned_message, context)
-                else NOT_FOUND_ANSWERS
-            )
-            return HistoricalAgentResult(
-                answer=localized_message(not_found, answer_language),
-                sources=filter_sources_for_query(sources, cleaned_message, context),
-                suggested_actions=self._build_suggested_actions(
-                    filter_sources_for_query(sources, cleaned_message, context),
-                    context,
-                    answer_language,
-                    cleaned_message,
-                ),
-                memory_updates=self._build_memory_updates(
-                    retrieved_chunks,
+            if (
+                not web_search_results
+                and needs_topic_web_supplement
+                and requests_archaeology_news(cleaned_message, context)
+                and not explicit_web_request
+            ):
+                filtered_sources = filter_sources_for_query(
+                    sources,
                     cleaned_message,
                     context,
-                ),
-                latency=latency,
-            )
+                )
+                return HistoricalAgentResult(
+                    answer=localized_message(
+                        NO_RELEVANT_WEB_RESULTS_ANSWERS,
+                        answer_language,
+                    ),
+                    sources=filtered_sources,
+                    suggested_actions=self._build_suggested_actions(
+                        filtered_sources,
+                        context,
+                        answer_language,
+                        cleaned_message,
+                    ),
+                    memory_updates=self._build_memory_updates(
+                        retrieved_chunks,
+                        cleaned_message,
+                        context,
+                    ),
+                    latency=latency,
+                )
 
-        if not local_adequate and not web_search_results and not web_search_attempted:
+        if not local_sufficient and not web_search_results and not use_web_search:
             logger.info(
                 "Insufficient retrieval context for query (chunks=%s, best_score=%s)",
                 len(retrieved_chunks),
@@ -359,7 +380,7 @@ class HistoricalAgent:
             )
             return HistoricalAgentResult(
                 answer=localized_message(
-                    NOT_FOUND_ANSWERS,
+                    INSUFFICIENT_CONTEXT_ANSWERS,
                     answer_language,
                 ),
                 sources=sources,
@@ -377,6 +398,33 @@ class HistoricalAgent:
                 latency=latency,
             )
 
+        if not local_sufficient and not web_search_results and use_web_search:
+            logger.info(
+                "Web search enabled but returned no results (chunks=%s, best_score=%s)",
+                len(retrieved_chunks),
+                best_score,
+            )
+            if not retrieved_chunks:
+                return HistoricalAgentResult(
+                    answer=localized_message(
+                        INSUFFICIENT_CONTEXT_ANSWERS,
+                        answer_language,
+                    ),
+                    sources=sources,
+                    suggested_actions=self._build_suggested_actions(
+                        sources,
+                        context,
+                        answer_language,
+                        cleaned_message,
+                    ),
+                    memory_updates=self._build_memory_updates(
+                        retrieved_chunks,
+                        cleaned_message,
+                        context,
+                    ),
+                    latency=latency,
+                )
+
         web_search_empty_fallback = (
             explicit_web_request
             and use_web_search
@@ -384,8 +432,8 @@ class HistoricalAgent:
             and local_sufficient
             and local_context_relevant
         )
-        prompt_explicit_web = (explicit_web_request or web_search_attempted) and bool(
-            web_search_results
+        prompt_explicit_web = (
+            explicit_web_request and use_web_search and bool(web_search_results)
         )
 
         with StepTimer() as prompt_timer:
@@ -529,9 +577,7 @@ class HistoricalAgent:
         chunk: dict[str, Any],
         user_message: str,
     ) -> bool:
-        blob = normalize_text(
-            f"{chunk.get('title', '')} {chunk.get('chunk_text', '')}"
-        )
+        blob = normalize_text(f"{chunk.get('title', '')} {chunk.get('chunk_text', '')}")
         if "cartagena" not in blob:
             return False
         if any(marker in blob for marker in ("tunisie", "tunisia", "carthage tunis")):
@@ -629,7 +675,9 @@ class HistoricalAgent:
         user_message: str,
     ) -> list[str]:
         actions: list[str] = []
-        interests = {str(item).lower() for item in (memory_context.get("interests") or [])}
+        interests = {
+            str(item).lower() for item in (memory_context.get("interests") or [])
+        }
 
         has_monument = any(source.source_type == "monument" for source in sources)
         has_circuit = any(source.source_type == "circuit" for source in sources)
@@ -669,12 +717,14 @@ class HistoricalAgent:
         user_message: str,
         memory_context: dict[str, Any],
     ) -> dict[str, Any]:
-        if get_site_id_for_attribute_follow_up(user_message, memory_context) is not None:
+        if (
+            get_site_id_for_attribute_follow_up(user_message, memory_context)
+            is not None
+        ):
             return {}
 
         if references_session_monument(user_message, memory_context) and (
-            is_art_or_culture_query(user_message)
-            or user_requests_lookup(user_message)
+            is_art_or_culture_query(user_message) or user_requests_lookup(user_message)
         ):
             return {}
 

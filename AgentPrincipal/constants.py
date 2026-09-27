@@ -8,15 +8,15 @@ import os
 import re
 from dotenv import load_dotenv
 
+# Charge d'abord le fichier global
+load_dotenv(r"E:\claude\.env")
+# Charge ensuite le local (s'il en reste un)
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY_PRINCIPAL", "")
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 
-# Modèle léger pour les tâches simples (détection intention, extraction signaux)
-MODEL_FAST = "llama-3.1-8b-instant"
-
-# Modèle puissant pour la synthèse narrative finale
-MODEL_SMART = "llama-3.3-70b-versatile"
+MODEL_FAST = os.getenv("GROQ_MODEL_FAST", "qwen/qwen3.8-27b")
+MODEL_SMART = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 # Timeout en secondes pour chaque appel agent
 AGENT_TIMEOUT_SECONDS = 50
@@ -151,6 +151,10 @@ RÈGLES :
 - Si le monument est fermé : dis-le clairement et propose le prochain site
 - Termine par une invitation à explorer : "Avancez vers..." ou "Levez les yeux..."
 - JAMAIS "selon les données" ou "d'après mes informations"
+- N'invente JAMAIS d'horaires, de durée de visite, de tarif ou de condition d'accès
+  qui ne sont pas fournis explicitement dans le contexte ci-dessus. S'ils sont
+  absents, n'en parle simplement pas — concentre-toi sur le récit sensoriel et
+  historique du lieu, sans donner de fausses informations pratiques.
 - Réponds dans la langue de l'utilisateur"""
 
 # ───────────────────────────────────────────────────────────────────────────────

@@ -149,7 +149,7 @@ class HistoricalRAGPipeline:
             params.append(site_id)
 
         where_clause = " AND ".join(conditions)
-        params.append(limit)
+        
 
         sql = f"""
             SELECT
@@ -163,13 +163,16 @@ class HistoricalRAGPipeline:
                 embedding
             FROM historical_chunks
             WHERE {where_clause}
-            ORDER BY id
-            LIMIT %s
+           
         """
 
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, params)
-            return [dict(row) for row in cur.fetchall()]
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(sql, params)
+                return [dict(row) for row in cur.fetchall()]
+        except Exception:
+            conn.rollback()
+            raise
 
     def _score_candidates(
         self,

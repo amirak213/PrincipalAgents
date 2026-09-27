@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+﻿from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -24,12 +24,12 @@ class MonumentDistance(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     from_monument_id: Mapped[str] = mapped_column(
         String,
-        ForeignKey("monuments.id_monument", ondelete="CASCADE"),
+        ForeignKey("monuments.id", ondelete="CASCADE"),
         nullable=False,
     )
     to_monument_id: Mapped[str] = mapped_column(
         String,
-        ForeignKey("monuments.id_monument", ondelete="CASCADE"),
+        ForeignKey("monuments.id", ondelete="CASCADE"),
         nullable=False,
     )
     distance_m: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)

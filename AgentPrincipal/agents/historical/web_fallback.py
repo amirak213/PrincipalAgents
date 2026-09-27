@@ -13,23 +13,11 @@ from __future__ import annotations
 
 import logging
 from typing import Any
-from urllib.parse import quote_plus
-
-import httpx
-from lxml import html as lxml_html
+from ddgs import DDGS
 
 logger = logging.getLogger(__name__)
 
-DDG_HTML_URL = "https://html.duckduckgo.com/html/"
 REQUEST_TIMEOUT = 8.0
-
-_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    ),
-}
-
 # Mots-clés pour filtrer les résultats non pertinents (Carthage Tunisie uniquement)
 _RELEVANCE_KEYWORDS = {
     "carthage",
@@ -71,56 +59,27 @@ def search_web(
     region = "fr-fr" if language == "fr" else ("us-en" if language == "en" else "wt-wt")
 
     try:
-        with httpx.Client(
-            timeout=REQUEST_TIMEOUT, headers=_HEADERS, follow_redirects=True
-        ) as client:
-            response = client.post(
-                DDG_HTML_URL,
-                data={"q": enriched_query, "kl": region},
+        with DDGS(timeout=REQUEST_TIMEOUT) as ddgs:
+            raw_results = list(
+                ddgs.text(enriched_query, region=region, max_results=max_results * 2)
             )
-            response.raise_for_status()
-    except httpx.TimeoutException:
-        logger.warning(
-            "DuckDuckGo search timed out after %.0fs (query=%r)",
-            REQUEST_TIMEOUT,
-            cleaned_query,
-        )
-        return []
     except Exception as exc:
         logger.warning("DuckDuckGo search failed: %s", exc)
         return []
 
     try:
-        raw_results = _parse_ddg_html(response.text)
+        normalized = [
+            {"title": r.get("title", ""), "url": r.get("href", ""), "body": r.get("body", "")}
+            for r in raw_results
+        ]
+        filtered = [r for r in normalized if _is_relevant(r)]
     except Exception as exc:
-        logger.warning("DuckDuckGo HTML parsing failed: %s", exc)
+        logger.warning("DuckDuckGo result filtering failed: %s", exc)
         return []
 
-    filtered = [r for r in raw_results if _is_relevant(r)]
     return filtered[:max_results]
 
 
-def _parse_ddg_html(html_text: str) -> list[dict[str, str]]:
-    """Parse la page de résultats HTML de DuckDuckGo."""
-    tree = lxml_html.fromstring(html_text)
-    results: list[dict[str, str]] = []
-
-    for node in tree.cssselect("div.result"):
-        title_el = node.cssselect("a.result__a")
-        snippet_el = node.cssselect("a.result__snippet") or node.cssselect(
-            "div.result__snippet"
-        )
-
-        title = title_el[0].text_content().strip() if title_el else ""
-        url = title_el[0].get("href", "").strip() if title_el else ""
-        body = snippet_el[0].text_content().strip() if snippet_el else ""
-
-        if not title and not body:
-            continue
-
-        results.append({"title": title, "url": url, "body": body})
-
-    return results
 
 
 def _enrich_query(query: str, language: str) -> str:

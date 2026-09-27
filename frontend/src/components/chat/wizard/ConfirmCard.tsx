@@ -24,7 +24,6 @@ export default function ConfirmCard({
 }: ConfirmCardProps) {
   const { setActiveCircuit, setGuideEnabled } = useWorkspace();
 
-  console.log("ConfirmCard circuit prop:", circuit);
 
   useEffect(() => {
     if (circuit) {

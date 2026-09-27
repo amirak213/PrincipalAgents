@@ -17,6 +17,8 @@ fonctions pures + une interface Redis, à brancher depuis orchestrateur.py.
 from __future__ import annotations
 
 import json
+import math
+from datetime import date, datetime, timedelta
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from enum import Enum
@@ -162,12 +164,20 @@ class WizardEvent:
 # la WizardSession mise à jour. La transition d'état est explicite dans
 # chaque handler (pas de magie implicite), pour rester lisible et facile à
 # tester unitairement.
+class WizardValidationError(ValueError):
+    """Valeur invalide reçue dans un événement du wizard.
 
+    Hérite de ValueError : l'orchestrateur la traite déjà (log + rappel de la
+    question courante), sans changer l'état du wizard.
+    """
 
 def handle_city_selection(wizard: WizardSession, event: WizardEvent) -> WizardSession:
     if event.type != "select_city":
         raise ValueError(f"Événement inattendu en CITY_SELECTION: {event.type}")
-    wizard.city = event.value  # "carthage" | "la_marsa"
+    city = _normalize_city(event.value) if isinstance(event.value, str) else None
+    if city is None:
+        raise WizardValidationError(f"Ville invalide: {event.value!r}")
+    wizard.city = city  # "carthage" | "la_marsa"
     wizard.state = WizardState.PLACE_SELECTION
     return wizard
 
@@ -175,7 +185,10 @@ def handle_city_selection(wizard: WizardSession, event: WizardEvent) -> WizardSe
 def handle_place_selection(wizard: WizardSession, event: WizardEvent) -> WizardSession:
     if event.type != "select_places":
         raise ValueError(f"Événement inattendu en PLACE_SELECTION: {event.type}")
-    wizard.must_visit = list(event.value or [])
+    value = event.value or []
+    if not isinstance(value, (list, tuple)) or len(value) > 50:
+        raise WizardValidationError("Liste de lieux invalide")
+    wizard.must_visit = list(value)
     wizard.state = WizardState.CUSTOMIZATION_BUDGET
     return wizard
 
@@ -191,7 +204,19 @@ def handle_load_more_places(wizard: WizardSession, event: WizardEvent) -> Wizard
 def handle_budget(wizard: WizardSession, event: WizardEvent) -> WizardSession:
     if event.type != "set_budget":
         raise ValueError(f"Événement inattendu en CUSTOMIZATION_BUDGET: {event.type}")
-    wizard.budget = event.value  # {"type": ..., "amount": ...}
+    value = event.value
+    if not isinstance(value, dict):
+        raise WizardValidationError("Budget invalide")
+    raw_amount = value.get("amount")
+    if raw_amount is None or isinstance(raw_amount, bool):
+        raise WizardValidationError("Montant du budget manquant")
+    try:
+        amount = float(raw_amount)
+    except (TypeError, ValueError):
+        raise WizardValidationError("Montant du budget invalide") from None
+    if not math.isfinite(amount) or amount < 0:
+        raise WizardValidationError("Montant du budget invalide")
+    wizard.budget = {**value, "amount": amount}  # {"type": ..., "amount": ...}
     wizard.state = WizardState.CUSTOMIZATION_MOBILITY
     return wizard
 
@@ -199,7 +224,9 @@ def handle_budget(wizard: WizardSession, event: WizardEvent) -> WizardSession:
 def handle_mobility(wizard: WizardSession, event: WizardEvent) -> WizardSession:
     if event.type != "set_mobility":
         raise ValueError(f"Événement inattendu en CUSTOMIZATION_MOBILITY: {event.type}")
-    wizard.mobility = event.value  # "walking" | "car" | "bike"
+    if not isinstance(event.value, str) or not event.value.strip() or len(event.value) > 32:
+        raise WizardValidationError(f"Mobilité invalide: {event.value!r}")
+    wizard.mobility = event.value.strip()  # "walking" | "car" | "bike"
     wizard.state = WizardState.CUSTOMIZATION_PREFERENCES
     return wizard
 
@@ -216,7 +243,35 @@ def handle_preferences(wizard: WizardSession, event: WizardEvent) -> WizardSessi
 def handle_dates(wizard: WizardSession, event: WizardEvent) -> WizardSession:
     if event.type != "set_dates":
         raise ValueError(f"Événement inattendu en CUSTOMIZATION_DATES: {event.type}")
-    wizard.dates = event.value  # {"date": ..., "duration_hours": ...}
+    value = event.value
+    if not isinstance(value, dict):
+        raise WizardValidationError("Dates invalides")
+    try:
+        day = date.fromisoformat(str(value.get("date")))
+    except ValueError:
+        raise WizardValidationError("Date invalide") from None
+    if day < date.today() - timedelta(days=1):  # tolérance d'un jour (fuseau)
+        raise WizardValidationError("Date dans le passé")
+    if value.get("start_time") is not None or value.get("end_time") is not None:
+        try:
+            start = datetime.strptime(str(value.get("start_time")), "%H:%M")
+            end = datetime.strptime(str(value.get("end_time")), "%H:%M")
+        except ValueError:
+            raise WizardValidationError("Horaires invalides") from None
+        if start >= end:
+            raise WizardValidationError("L'heure de fin doit suivre l'heure de début")
+    else:
+        
+        raw_hours = value.get("duration_hours")
+        if raw_hours is None or isinstance(raw_hours, bool):
+            raise WizardValidationError("Durée ou horaires manquants")
+        try:
+            hours = float(raw_hours)
+        except (TypeError, ValueError):
+            raise WizardValidationError("Durée invalide") from None
+        if not math.isfinite(hours) or not 0 < hours <= 24:
+            raise WizardValidationError("Durée invalide")
+    wizard.dates = value  # {"date", "start_time", "end_time"} ou {"date", "duration_hours"}
     wizard.state = WizardState.CIRCUIT_GENERATION
     return wizard
 
@@ -264,7 +319,7 @@ def handle_guide_mode_ready(wizard: WizardSession, event: WizardEvent) -> Wizard
 HANDLERS = {
     WizardState.CITY_SELECTION: handle_city_selection,
     WizardState.PLACE_SELECTION: handle_place_selection,
-    WizardState.PLACE_SELECTION: handle_place_selection,
+    
     WizardState.CUSTOMIZATION_BUDGET: handle_budget,
     WizardState.CUSTOMIZATION_MOBILITY: handle_mobility,
     WizardState.CUSTOMIZATION_PREFERENCES: handle_preferences,
@@ -313,7 +368,7 @@ def _normalize_city(raw: str) -> str | None:
 
 
 def start_wizard(session_id: str, signaux: dict | None = None) -> WizardSession:
-    print(f"[DEBUG] start_wizard appelé avec signaux={signaux}")
+    
     """Appelé depuis orchestrateur.py une fois que le LLM a détecté
     l'intention "je veux un circuit" depuis IDLE.
 
@@ -362,3 +417,11 @@ def question_for_state(state: WizardState, lang: str = "FR") -> str:
     """Retourne le texte déterministe associé à un état du wizard.
     Pas d'appel LLM ici — TODO EN/AR quand le besoin se présente."""
     return _QUESTIONS_FR.get(state, "...")
+
+
+def question_for_budget_category(lang: str = "FR") -> str:
+    """Demande la catégorie tarifaire manquante pour le budget."""
+    return (
+        "Quel type de tarif s'applique à vous : résident, étudiant, étranger, "
+        "enseignant, retraité ou enfant ?"
+    )

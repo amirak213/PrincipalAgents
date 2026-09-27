@@ -206,7 +206,9 @@ async def generer_explication_circuits(
             asyncio.to_thread(
                 _groq.chat.completions.create,
                 model=MODEL_SMART,
-                max_tokens=500,
+                max_tokens=700,
+                reasoning_effort="low",
+                include_reasoning=False,
                 temperature=0.75,
                 messages=[
                     {"role": "system", "content": SYSTEM_EXPLICATION_CIRCUITS},
@@ -215,6 +217,8 @@ async def generer_explication_circuits(
             ),
             timeout=AGENT_TIMEOUT_SECONDS,
         )
+        if response.choices[0].finish_reason == "length":
+            log.warning("[PRESENTATION] Réponse tronquée (finish_reason=length)")
         return (response.choices[0].message.content or "").strip()
     except Exception as e:
         log.warning(f"[PRESENTATION] Explication LLM échouée : {e}")

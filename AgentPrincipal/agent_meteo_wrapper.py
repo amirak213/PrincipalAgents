@@ -131,7 +131,12 @@ class AgentMeteoWrapper:
 
         try:
             # WeatherAgent.run() est synchrone — on wrap dans asyncio.to_thread
-            state = await asyncio.to_thread(agent.run,session_id, message)
+            _t0 = asyncio.get_running_loop().time()
+            state = await asyncio.to_thread(agent.run, session_id, message)
+            log.warning(
+                "[METEO] WeatherAgent.run : %.1fs",
+                asyncio.get_running_loop().time() - _t0,
+            )
             return self._parse_state(state)
 
         except asyncio.TimeoutError:

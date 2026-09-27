@@ -23,14 +23,44 @@ import sys
 import os
 import time
 from typing import Optional
+from contextlib import contextmanager
 
-from constants import PATH_CIRCUIT_AGENT
+import psycopg2
+from psycopg2 import pool as _pg_pool
 
-# ── Import db.py depuis PATH_CIRCUIT_AGENT (même pattern que systeme_loader.py) ──
-if PATH_CIRCUIT_AGENT not in sys.path:
-    sys.path.insert(0, PATH_CIRCUIT_AGENT)
+# ── Connexion dédiée à la base des monuments (conteneur Docker dourbia_db) ──
+# Indépendante du db.py d'AgentMeteo : AgentCircuit (ancienne source de get_conn)
+# a été supprimé, et le port 5432 (base "dourbia" ou "sig_dourbia" hors Docker)
+# ne contient pas la table monuments — seule l'instance Docker (5433) l'a.
+_DOURBIA_DB_CONFIG = {
+    "host": os.getenv("DOURBIA_PG_HOST", "127.0.0.1"),
+    "port": int(os.getenv("DOURBIA_PG_PORT", "5433")),
+    "dbname": os.getenv("DOURBIA_PG_DB", "dourbia"),
+    "user": os.getenv("DOURBIA_PG_USER", "dourbia"),
+    "password": os.getenv("DOURBIA_PG_PASSWORD", "dourbia"),
+}
+_dourbia_pool: Optional[_pg_pool.ThreadedConnectionPool] = None
 
-from db import get_conn  # type: ignores
+
+def _get_dourbia_pool() -> _pg_pool.ThreadedConnectionPool:
+    global _dourbia_pool
+    if _dourbia_pool is None:
+        _dourbia_pool = _pg_pool.ThreadedConnectionPool(1, 5, **_DOURBIA_DB_CONFIG)
+    return _dourbia_pool
+
+
+@contextmanager
+def get_conn():
+    p = _get_dourbia_pool()
+    conn = p.getconn()
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        p.putconn(conn)
 
 log = logging.getLogger("chatbot.geo_service")
 
@@ -209,7 +239,7 @@ async def _get_monuments_cached(force_refresh: bool = False) -> list[dict]:
 
 def _fetch_monument_by_id_sync(monument_id: str) -> Optional[dict]:
     """Charge un monument par ID. Synchrone."""
-    sql = "SELECT * FROM monuments WHERE id_monument = %s"
+    sql = "SELECT * FROM monuments WHERE id = %s::numeric"
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, (monument_id,))
@@ -370,11 +400,7 @@ class GeoService:
             distance = haversine_m(lat, lon, lat_m, lon_m)
 
             if distance <= rayon_m:
-                nom = (
-                    row.get(f"nom_monument_{langue_key}")
-                    or row.get("nom_monument_fr")
-                    or "Monument"
-                )
+                nom = row.get(f"name_{langue_key}") or row.get("name_fr") or "Monument"
                 description = (
                     row.get(f"description_{langue_key}")
                     or row.get("description_fr")
@@ -383,23 +409,23 @@ class GeoService:
 
                 nearby.append(
                     {
-                        "id": row.get("id_monument", ""),
+                        "id": row.get("id", ""),
                         "nom": nom,
                         "distance_m": round(distance, 1),
                         "description": description,
-                        "duree_visite_min": int(row.get("duree_visite_en_min") or 0),
-                        "statut": row.get("statut_monument") or "",
-                        "accessibilite": row.get("accessibilite_monument") or "",
+                        "duree_visite_min": int(row.get("visit_duration_minutes") or 0),
+                        "statut": row.get("status") or "",
+                        "accessibilite": row.get("accessibility") or "",
                         "importance": row.get("importance_monument") or "",
                         "horaires": {
-                            "ouverture_ete": row.get("horaire_ouverture_ete") or "",
-                            "fermeture_ete": row.get("horaire_fermeture_ete") or "",
-                            "ouverture_hiver": row.get("horaire_ouverture_hiver") or "",
-                            "fermeture_hiver": row.get("horaire_fermeture_hiver") or "",
+                            "ouverture_ete": row.get("opening_time_summer") or "",
+                            "fermeture_ete": row.get("closing_time_summer") or "",
+                            "ouverture_hiver": row.get("opening_time_winter") or "",
+                            "fermeture_hiver": row.get("closing_time_winter") or "",
                         },
-                        "adresse": row.get("adresse_monument") or "",
-                        "lat": lat_m,
-                        "lon": lon_m,
+                        "adresse": row.get("address") or "",
+                        "lat": _parse_coord(row.get("latitude")),
+                        "lon": _parse_coord(row.get("longitude")),
                     }
                 )
 
@@ -440,8 +466,8 @@ class GeoService:
             distance = haversine_m(lat, lon, lat_m, lon_m)
             if distance <= rayon_m:
                 nom = (
-                    row.get(f"nom_monument_{langue_key}")
-                    or row.get("nom_monument_fr")
+                    row.get(f"name_{langue_key}")
+                    or row.get("name_fr")
                     or "Monument"
                 )
                 description = (
@@ -476,6 +502,44 @@ class GeoService:
         nearby.sort(key=lambda x: x["distance_m"])
         return nearby
 
+    def get_nearby_from_stops(
+        self,
+        lat: float,
+        lon: float,
+        stops: list[dict],
+        rayon_m: int = 100,
+    ) -> list[dict]:
+        """
+        Détection de proximité sur une liste d'étapes déjà en mémoire
+        (circuit généré par le wizard, absent de tab_circuit_monument).
+        Haversine pure, aucun accès DB.
+        """
+        rayon_m = min(rayon_m, RAYON_MAX_M)
+        nearby: list[dict] = []
+        for stop in stops:
+            lat_raw = stop.get("latitude")
+            lon_raw = stop.get("longitude")
+            if lat_raw is None or lon_raw is None:
+                continue
+            try:
+                lat_m, lon_m = float(lat_raw), float(lon_raw)
+            except (TypeError, ValueError):
+                continue
+            distance = haversine_m(lat, lon, lat_m, lon_m)
+            if distance <= rayon_m:
+                nearby.append(
+                    {
+                        "id": str(stop.get("monument_id") or ""),
+                        "nom": stop.get("name") or "Monument",
+                        "distance_m": round(distance, 1),
+                        "ordre": stop.get("order"),
+                        "lat": lat_m,
+                        "lon": lon_m,
+                    }
+                )
+        nearby.sort(key=lambda x: x["distance_m"])
+        return nearby
+
     async def get_monument_by_id(
         self, monument_id: str, langue: str = "FR"
     ) -> Optional[dict]:
@@ -494,31 +558,27 @@ class GeoService:
         if not row:
             return None
 
-        nom = (
-            row.get(f"nom_monument_{langue_key}")
-            or row.get("nom_monument_fr")
-            or "Monument"
-        )
+        nom = row.get(f"name_{langue_key}") or row.get("name_fr") or "Monument"
         description = (
             row.get(f"description_{langue_key}") or row.get("description_fr") or ""
         )
 
         return {
-            "id": row.get("id_monument", ""),
+            "id": row.get("id", ""),
             "nom": nom,
             "description": description,
-            "duree_visite_min": int(row.get("duree_visite_en_min") or 0),
-            "statut": row.get("statut_monument") or "",
-            "accessibilite": row.get("accessibilite_monument") or "",
+            "duree_visite_min": int(row.get("visit_duration_minutes") or 0),
+            "statut": row.get("status") or "",
+            "accessibilite": row.get("accessibility") or "",
             "horaires": {
-                "ouverture_ete": row.get("horaire_ouverture_ete") or "",
-                "fermeture_ete": row.get("horaire_fermeture_ete") or "",
-                "ouverture_hiver": row.get("horaire_ouverture_hiver") or "",
-                "fermeture_hiver": row.get("horaire_fermeture_hiver") or "",
+                "ouverture_ete": row.get("opening_time_summer") or "",
+                "fermeture_ete": row.get("closing_time_summer") or "",
+                "ouverture_hiver": row.get("opening_time_winter") or "",
+                "fermeture_hiver": row.get("closing_time_winter") or "",
             },
-            "adresse": row.get("adresse_monument") or "",
-            "lat": _parse_coord(row.get("latitude_monument")),
-            "lon": _parse_coord(row.get("longitude_monument")),
+            "adresse": row.get("address") or "",
+            "lat": _parse_coord(row.get("latitude")),
+            "lon": _parse_coord(row.get("longitude")),
         }
 
 

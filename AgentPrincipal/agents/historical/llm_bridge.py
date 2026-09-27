@@ -2,8 +2,8 @@
 llm_bridge.py — Appel Groq pour l'Agent Historique
 
 INTEGRATION NOTE: Utilise httpx directement (pas le client Groq de Dourbia)
-car ce worker tourne en subprocess isolé. Il lit GROQ_API_KEY depuis l'env,
-qui est la même clé que le reste de Dourbia — pas de second compte.
+car ce worker tourne en subprocess isolé. Il lit GROQ_API_KEY_PRINCIPAL
+(fallback GROQ_API_KEY) depuis l'env, comme le reste de Dourbia.
 """
 from __future__ import annotations
 
@@ -16,10 +16,13 @@ logger = logging.getLogger(__name__)
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # INTEGRATION NOTE: Même modèle que celui utilisé par Aziz pour les tâches
-# de génération de texte (llama-3.3-70b-versatile pour qualité historique).
-HISTORICAL_MODEL = os.environ.get("HISTORICAL_LLM_MODEL", "llama-3.3-70b-versatile")
+# de génération de texte.
+HISTORICAL_MODEL = os.environ.get(
+    "HISTORICAL_LLM_MODEL",
+    os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b"),
+)
 LLM_TIMEOUT = float(os.environ.get("LLM_TIMEOUT_SECONDS", "30.0"))
-LLM_MAX_TOKENS = int(os.environ.get("HISTORICAL_MAX_TOKENS", "400"))
+LLM_MAX_TOKENS = int(os.environ.get("HISTORICAL_MAX_TOKENS", "700"))
 LLM_TEMPERATURE = float(os.environ.get("HISTORICAL_TEMPERATURE", "0.2"))
 
 
@@ -36,10 +39,13 @@ def call_groq_for_history(messages: list[dict[str, str]]) -> str:
     Raises:
         RuntimeError: Si l'appel échoue ou la clé est absente.
     """
-    api_key = os.environ.get("GROQ_API_KEY", "").strip()
+    api_key = (
+        os.environ.get("GROQ_API_KEY_PRINCIPAL", "").strip()
+        or os.environ.get("GROQ_API_KEY", "").strip()
+    )
     if not api_key:
         raise RuntimeError(
-            "GROQ_API_KEY manquant dans l'environnement du worker historique."
+            "GROQ_API_KEY_PRINCIPAL (ou GROQ_API_KEY) manquant dans l'environnement du worker historique."
         )
 
     payload = {
@@ -47,6 +53,8 @@ def call_groq_for_history(messages: list[dict[str, str]]) -> str:
         "messages": messages,
         "temperature": LLM_TEMPERATURE,
         "max_tokens": LLM_MAX_TOKENS,
+        "reasoning_effort": "low",
+        "include_reasoning": False,
     }
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -71,6 +79,12 @@ def call_groq_for_history(messages: list[dict[str, str]]) -> str:
         raise RuntimeError(f"Groq : erreur réseau — {exc}") from exc
 
     try:
-        return data["choices"][0]["message"]["content"].strip()
+        choice = data["choices"][0]
+        logger.info(
+            "Historical Groq response: finish_reason=%s usage=%s",
+            choice.get("finish_reason"),
+            data.get("usage"),
+        )
+        return choice["message"]["content"].strip()
     except (KeyError, IndexError, AttributeError) as exc:
         raise RuntimeError(f"Groq : format de réponse inattendu — {exc}") from exc

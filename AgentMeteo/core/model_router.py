@@ -61,6 +61,26 @@ class ProviderState:
             self.error_count = max(0, self.error_count - 1)
 
 
+class _RateLimitedCompletions:
+    def __init__(self, completions: Any, semaphore: threading.Semaphore) -> None:
+        self._completions = completions
+        self._semaphore = semaphore
+
+    def create(self, **kwargs: Any) -> Any:
+        with self._semaphore:
+            return self._completions.create(**kwargs)
+
+
+class _RateLimitedChat:
+    def __init__(self, chat: Any, semaphore: threading.Semaphore) -> None:
+        self.completions = _RateLimitedCompletions(chat.completions, semaphore)
+
+
+class _RateLimitedClient:
+    def __init__(self, client: OpenAI, semaphore: threading.Semaphore) -> None:
+        self.chat = _RateLimitedChat(client.chat, semaphore)
+
+
 class ModelRouter:
     """
     Router LLM avec :
@@ -72,39 +92,57 @@ class ModelRouter:
     # Pool de modèles — configurable via env
     MODEL_POOL: list[ModelConfig] = [
         ModelConfig(
-            provider   = "groq",
-            model_id   = os.getenv("GROQ_MODEL_FAST", "llama-3.1-8b-instant"),
-            task_types = [TaskType.PLAN, TaskType.EVALUATE],
-            priority   = 10,
+            provider="groq",
+            model_id=os.getenv("GROQ_MODEL_FAST")
+            or os.getenv("GROQ_MODEL")
+            or "openai/gpt-oss-120b",
+            task_types=[TaskType.PLAN, TaskType.EVALUATE],
+            priority=10,
         ),
         ModelConfig(
-            provider   = "groq",
-            model_id   = os.getenv("GROQ_MODEL_MAIN", "llama-3.3-70b-versatile"),
-            task_types = [TaskType.SYNTHESIZE, TaskType.CHAT],
-            priority   = 10,
+            provider="groq",
+            model_id=os.getenv("GROQ_MODEL")
+            or os.getenv("GROQ_MODEL_MAIN")
+            or "openai/gpt-oss-120b",
+            task_types=[TaskType.SYNTHESIZE, TaskType.CHAT],
+            priority=10,
         ),
         ModelConfig(
-            provider   = "openrouter",
-            model_id   = os.getenv("OPENROUTER_MODEL", "mistralai/mistral-7b-instruct"),
-            task_types = [TaskType.PLAN, TaskType.EVALUATE, TaskType.SYNTHESIZE, TaskType.CHAT],
-            priority   = 5,
+            provider="openrouter",
+            model_id=os.getenv("OPENROUTER_MODEL", "mistralai/mistral-7b-instruct"),
+            task_types=[
+                TaskType.PLAN,
+                TaskType.EVALUATE,
+                TaskType.SYNTHESIZE,
+                TaskType.CHAT,
+            ],
+            priority=5,
         ),
     ]
 
     def __init__(self):
         self._provider_states: dict[str, ProviderState] = {}
-        self._clients:         dict[str, OpenAI]        = {}
+        self._clients:         dict[str, Any]           = {}
         self._lock = threading.Lock()
+        self._groq_semaphore = threading.Semaphore(1)
         self._init_clients()
 
     def _init_clients(self) -> None:
-        groq_key = os.getenv("GROQ_API_KEY", "")
+        groq_key = (
+            os.getenv("GROQ_API_KEY_PRINCIPAL", "").strip()
+            or os.getenv("GROQ_API_KEY", "").strip()
+        )
         or_key   = os.getenv("OPENROUTER_API_KEY", "")
 
         if groq_key:
             self._clients["groq"] = OpenAI(
-                api_key  = groq_key,
-                base_url = "https://api.groq.com/openai/v1",
+                api_key=groq_key,
+                base_url="https://api.groq.com/openai/v1",
+                max_retries=1,
+                timeout=float(os.getenv("LLM_TIMEOUT_SECONDS", "15")),
+            )
+            self._clients["groq"] = _RateLimitedClient(
+                self._clients["groq"], self._groq_semaphore
             )
             self._provider_states["groq"] = ProviderState(name="groq")
 

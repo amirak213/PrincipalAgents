@@ -41,6 +41,7 @@ from AgentPrincipal.agents.historical.rag_pipeline import HistoricalRAGPipeline
 from AgentPrincipal.agents.historical.llm_bridge import call_groq_for_history
 from AgentPrincipal.agents.historical.prompts import build_rag_prompt, INSUFFICIENT_CONTEXT
 from dotenv import load_dotenv
+load_dotenv(r"E:\claude\.env")
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=True)
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", line_buffering=True)
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", line_buffering=True)
@@ -70,7 +71,7 @@ RAG_TOP_K = int(os.environ.get("RAG_TOP_K", "5"))
 
 # DB URL ciblant sig_dourbia (Dourbia, pas l'agent externe)
 DB_URL = os.environ.get(
-    "DATABASE_URL",
+    "HISTORICAL_DATABASE_URL",
     "postgresql://postgres:postgres@localhost:5432/sig_dourbia",
 )
 
@@ -184,6 +185,7 @@ def process_request(payload: dict[str, Any], pipeline: HistoricalRAGPipeline) ->
                 "title": c.get("title") or "",
                 "score": round(c["score"], 4),
                 "source_type": c["source_type"],
+                "chunk_text": c.get("chunk_text") or "",
             }
             for c in good_chunks[:3]
         ]

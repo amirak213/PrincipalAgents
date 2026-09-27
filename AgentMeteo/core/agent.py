@@ -5,7 +5,9 @@ Cycle : Observe → Plan → Act → Evaluate → Respond
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -18,6 +20,8 @@ from memory.context import ContextManager
 from observability.tracer import AgentTracer, Span
 from tools.registry import ToolRegistry
 from tools.executor import ToolExecutor
+
+log = logging.getLogger("weather_agent")
 
 
 class AgentStatus(Enum):
@@ -133,6 +137,9 @@ class WeatherAgent:
     # ──────────────────────────────────────────────
 
     def _main_loop(self, state: AgentState, run_span: Span, deadline: float = 0) -> AgentState:
+        loop_started = time.perf_counter()
+        log.info("main_loop.start run_id=%s", state.run_id)
+
         # ── OBSERVE : charge le contexte mémoire ──
         ctx = self.context.build_context(state.session_id, state.user_query)
 
@@ -166,11 +173,12 @@ class WeatherAgent:
             # ── ACT : exécute les steps du plan ──
             state.status = AgentStatus.EXECUTING
             with self.tracer.span("act", state.run_id) as s:
-                new_results = self.executor.execute_plan(
+                new_results = asyncio.run(self.executor.execute_plan_with_deadline(
                     plan      = plan,
                     run_id    = state.run_id,
                     max_steps = self.MAX_STEPS - len(accumulated_tool_results),
-                )
+                    deadline  = deadline,
+                ))
                 accumulated_tool_results.extend(new_results)
                 state.tool_results = accumulated_tool_results
                 state.tokens_used += sum(r.get("tokens", 0) for r in new_results)
@@ -210,6 +218,14 @@ class WeatherAgent:
             state = self._generate_final_answer(state, ctx, accumulated_tool_results)
 
         state.status = AgentStatus.DONE
+        log.info(
+            "main_loop.end run_id=%s duration_ms=%.0f iterations=%s tools=%s status=%s",
+            state.run_id,
+            (time.perf_counter() - loop_started) * 1000,
+            state.iterations,
+            len(state.tool_results),
+            state.status.value,
+        )
         return state
 
     # ──────────────────────────────────────────────
@@ -223,8 +239,24 @@ class WeatherAgent:
         tool_results: list[dict],
     ) -> AgentState:
         """Synthèse finale — le LLM génère la réponse en prose."""
-        with self.tracer.span("synthesize", state.run_id):
+        # Des outils ont été appelés mais aucun n'a renvoyé de données valides :
+        # on n'appelle pas le LLM (il pourrait inventer une météo plausible).
+        if tool_results and not any(
+            r.get("result") and not r.get("result", {}).get("error")
+            for r in tool_results
+        ):
+            state.final_answer = (
+                "Je n'ai pas pu récupérer les prévisions météo pour le moment. "
+                "Veuillez réessayer dans quelques instants."
+            )
+            return state
+        with self.tracer.span("synthesize", state.run_id) as s:
             client, model = self._get_llm()
+            reasoning_kwargs = (
+                {"extra_body": {"reasoning_effort": "low", "include_reasoning": False}}
+                if "gpt-oss" in model
+                else {}
+            )
 
             synthesis_prompt = _build_synthesis_prompt(
                 query        = state.user_query,
@@ -234,15 +266,23 @@ class WeatherAgent:
                 eval_result  = state.eval_result,
             )
 
-            resp = client.chat.completions.create(
-                model       = model,
-                messages    = synthesis_prompt,
-                max_tokens  = 600,
-                temperature = 0.3,
-            )
+            try:
+                resp = client.chat.completions.create(
+                    model=model,
+                    messages=synthesis_prompt,
+                    max_tokens=800,
+                    **reasoning_kwargs,
+                    temperature=0.3,
+                )
 
-            state.final_answer = resp.choices[0].message.content or ""
-            state.tokens_used += resp.usage.total_tokens if resp.usage else 0
+                state.final_answer = resp.choices[0].message.content or ""
+                state.tokens_used += resp.usage.total_tokens if resp.usage else 0
+            except Exception as e:
+                s.error(str(e))
+                state.final_answer = (
+                    "⚠️ Désolé, je n'ai pas pu récupérer les informations météo "
+                    "pour le moment. Veuillez réessayer dans quelques instants."
+                )
 
         return state
 

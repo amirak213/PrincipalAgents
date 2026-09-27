@@ -108,15 +108,23 @@ class AgentPlanner:
 
         try:
             client, model = self._get_llm()
+            reasoning_kwargs = (
+                {"extra_body": {"reasoning_effort": "low", "include_reasoning": False}}
+                if "gpt-oss" in model
+                else {}
+            )
             resp = client.chat.completions.create(
-                model       = model,
-                messages    = [
+                model=model,
+                messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user",   "content": f"Question : {query}{already_done}"},
+                    {"role": "user", "content": f"Question : {query}{already_done}"},
                 ],
-                max_tokens  = 400,
-                temperature = 0.1,   # déterministe pour le planning
-                response_format={"type": "json_object"} if _supports_json_mode(model) else None,
+                max_tokens=700,
+                temperature=0.1,  # déterministe pour le planning
+                response_format=(
+                    {"type": "json_object"} if _supports_json_mode(model) else None
+                ),
+                **reasoning_kwargs,
             )
 
             raw = resp.choices[0].message.content or "{}"
@@ -252,7 +260,7 @@ class AgentPlanner:
 
 def _supports_json_mode(model: str) -> bool:
     """Certains modèles ne supportent pas response_format."""
-    supported_prefixes = ("gpt-", "claude-", "llama-3")
+    supported_prefixes = ("gpt-", "claude-", "llama-3", "openai/gpt-")
     return any(model.startswith(p) for p in supported_prefixes)
 
 

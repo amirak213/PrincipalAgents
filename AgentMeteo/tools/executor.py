@@ -5,6 +5,7 @@ Les erreurs sont propagées au LLM, jamais silencieuses.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from typing import Any
@@ -62,6 +63,58 @@ class ToolExecutor:
                     continue
 
             result = self._execute_step(step, run_id)
+            results[step.step_id] = result
+            output_list.append(result)
+
+        return output_list
+
+    async def execute_plan_with_deadline(
+        self,
+        plan: ExecutionPlan,
+        run_id: str,
+        max_steps: int = 8,
+        deadline: float | None = None,
+    ) -> list[dict]:
+        """Execute steps asynchronously and enforce the run deadline per tool."""
+        results: dict[int, dict] = {}
+        output_list: list[dict] = []
+
+        for step in plan.steps[:max_steps]:
+            for dep_id in step.depends_on:
+                if dep_id not in results:
+                    results[step.step_id] = {
+                        "tool_name": step.tool_name,
+                        "result": {"error": f"Dépendance {dep_id} non résolue"},
+                        "duration_ms": 0,
+                    }
+                    continue
+
+            timeout = None
+            if deadline is not None:
+                timeout = max(0.0, deadline - time.time())
+
+            try:
+                if timeout is not None:
+                    result = await asyncio.wait_for(
+                        asyncio.to_thread(self._execute_step, step, run_id),
+                        timeout=timeout,
+                    )
+                else:
+                    result = await asyncio.to_thread(
+                        self._execute_step, step, run_id
+                    )
+            except asyncio.TimeoutError:
+                result = {
+                    "tool_name": step.tool_name,
+                    "tool_args": step.tool_args,
+                    "result": {
+                        "error": "Deadline globale météo dépassée",
+                        "error_type": "TimeoutError",
+                    },
+                    "duration_ms": 0,
+                    "step_id": step.step_id,
+                }
+
             results[step.step_id] = result
             output_list.append(result)
 

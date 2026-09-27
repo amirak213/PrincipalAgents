@@ -252,44 +252,49 @@ def _extraire_titre(source) -> str:
         return str(source.get("title") or "")
     return str(getattr(source, "title", "") or "")
 
+def _extraire_chunk_text(source) -> str:
+    """
+    Extrait le texte du chunk d'une source, qu'elle soit un dict
+    ({'chunk_text': ...}) ou un objet. Retourne '' si introuvable
+    (ex: source web, ou ancien format sans chunk_text).
+    """
+    if isinstance(source, dict):
+        return str(source.get("chunk_text") or "")
+    return str(getattr(source, "chunk_text", "") or "")
 
 def _detect_hallucination(reponse: str, sources: list) -> tuple[bool, list[str]]:
     """
-    Version DÉGRADÉE du grounding check (Option B) : le worker RAG ne renvoie
-    que des titres de sources (pas le texte brut des chunks), donc on vérifie
-    seulement que les noms propres/lieux mentionnés dans la réponse
-    correspondent à des mots présents dans les titres des sources citées.
+        Grounding check : vérifie que les faits vérifiables (noms propres, dates,
+        chiffres) mentionnés dans la réponse sont présents dans le texte des
+        chunks sources (chunk_text) ou, à défaut, dans leurs titres.
+    
+        Si une source n'a pas de chunk_text (ex: fallback web, ancien format),
+        seul son titre sert de référence pour elle — grounding partiel dans ce cas,
+        signal plus faible pour les faits qui ne reposent que sur des sources web.
 
-    Ne vérifie PAS dates/chiffres (aucun texte source disponible pour ça) —
-    grounding partiel, à traiter comme un signal faible, pas une preuve.
-
-    Si sources est vide, on ne peut rien vérifier -> pas de flag (évite faux positifs).
+        Si sources est vide, on ne peut rien vérifier -> pas de flag (évite faux positifs).
     """
+
     if not sources:
         return (False, [])
 
-    # On ne garde que les noms propres pour cette version dégradée
-    # (dates/nombres nécessiteraient le texte des chunks, indisponible ici)
     tous_faits = _extraire_faits(reponse)
-    faits_noms_propres = [
-        f
-        for f in tous_faits
-        if not _PATTERN_ANNEE.fullmatch(f) and not _PATTERN_NOMBRE.fullmatch(f)
-    ]
-    if not faits_noms_propres:
+    if not tous_faits:
         return (False, [])
 
-    titres_normalises = " ".join(_normaliser(_extraire_titre(s)) for s in sources)
+    texte_verification = " ".join(
+        _normaliser(_extraire_titre(s)) + " " + _normaliser(_extraire_chunk_text(s))
+        for s in sources
+    )
 
     faits_non_verifies = [
-        fait
-        for fait in faits_noms_propres
-        if _normaliser(fait) not in titres_normalises
+        fait for fait in tous_faits 
+        if _normaliser(fait) not in texte_verification
     ]
 
     seuil_ratio = 0.7
     min_faits_non_verifies = 3
-    ratio_non_verifie = len(faits_non_verifies) / len(faits_noms_propres)
+    ratio_non_verifie = len(faits_non_verifies) / len(tous_faits)
     hallucination = (
         ratio_non_verifie >= seuil_ratio
         and len(faits_non_verifies) >= min_faits_non_verifies
@@ -364,13 +369,12 @@ def check_output_rag(
     seuil_hors_sujet: float = SEUIL_HORS_SUJET_DEFAUT,
 ) -> OutputGuardResult:
     """
-    Check Niveau 1 + Niveau 2 (grounding dégradé sur titres de sources).
+    Check Niveau 1 + Niveau 2 (grounding sur chunk_text + titres des sources).
     Spécifique à AgentHistorique.
 
-    Note : grounding dégradé — le worker RAG ne renvoie que des titres,
-    pas le texte des chunks. Vérifie seulement la cohérence des noms propres
-    de la réponse avec les titres des sources citées (pas dates/chiffres).
+    
     """
+
     resultat = check_output_generic(
         reponse, question_originale, embedding_model, seuil_hors_sujet
     )

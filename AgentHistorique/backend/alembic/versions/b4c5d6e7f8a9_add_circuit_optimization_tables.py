@@ -28,8 +28,12 @@ def upgrade() -> None:
         sa.Column("to_monument_id", sa.Text(), nullable=False),
         sa.Column("distance_m", sa.Numeric(precision=12, scale=2), nullable=True),
         sa.Column("distance_km", sa.Numeric(precision=10, scale=4), nullable=True),
-        sa.Column("duration_walk_min", sa.Numeric(precision=10, scale=2), nullable=True),
-        sa.Column("duration_bike_min", sa.Numeric(precision=10, scale=2), nullable=True),
+        sa.Column(
+            "duration_walk_min", sa.Numeric(precision=10, scale=2), nullable=True
+        ),
+        sa.Column(
+            "duration_bike_min", sa.Numeric(precision=10, scale=2), nullable=True
+        ),
         sa.Column("duration_car_min", sa.Numeric(precision=10, scale=2), nullable=True),
         sa.Column(
             "created_at",
@@ -43,8 +47,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(["from_monument_id"], ["monuments.id_monument"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["to_monument_id"], ["monuments.id_monument"], ondelete="CASCADE"),
+        
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
             "from_monument_id",

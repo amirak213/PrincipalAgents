@@ -91,7 +91,7 @@ class MonumentNode:
     @classmethod
     def from_orm(cls, monument: Monument, *, price: float) -> MonumentNode:
         return cls(
-            id=monument.id,
+            id=monument.id_str,
             name=monument.name_fr,
             latitude=monument.latitude_float or 0.0,
             longitude=monument.longitude_float or 0.0,
@@ -127,12 +127,14 @@ class CircuitDataLoader:
             if monument.latitude_float is None or monument.longitude_float is None:
                 continue
             price = get_monument_price(monument, tariff_type)
-            nodes[monument.id] = MonumentNode.from_orm(monument, price=price)
+            nodes[monument.id_str] = MonumentNode.from_orm(monument, price=price)
         return nodes
 
     def load_graph(self) -> dict[str, dict[str, GraphEdge]]:
         monuments = self._db.scalars(select(Monument)).all()
-        monument_ids = [str(monument.id) for monument in monuments if monument.id is not None]
+        monument_ids = [
+            monument.id_str for monument in monuments if monument.id is not None
+        ]
         lookup, unresolved = build_distance_lookup(self._db, monument_ids=monument_ids)
 
         graph: dict[str, dict[str, GraphEdge]] = {}

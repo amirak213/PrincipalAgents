@@ -25,6 +25,7 @@ import logging
 import re
 import difflib
 import time
+import uuid
 from functools import lru_cache
 from typing import Optional
 
@@ -79,7 +80,12 @@ from circuit_presentation import presenter_recommandations
 import os
 from sentence_transformers import SentenceTransformer
 import sys
-from wizard_state_machine import start_wizard, question_for_state, WizardStore
+from wizard_state_machine import (
+    start_wizard,
+    question_for_state,
+    reset_wizard,
+    WizardStore,
+)
 
 _chatbot_path = os.path.dirname(os.path.abspath(__file__))
 _tools_path = os.path.join(_chatbot_path, "tools")
@@ -115,6 +121,7 @@ from wizard_state_machine import (
     apply_event,
     start_wizard,
     question_for_state,
+    question_for_budget_category,
 )
 from redis_client import get_redis
 from redis_client import get_redis
@@ -124,6 +131,12 @@ from securite.output_guard import check_output_generic, check_output_rag  # NOUV
 # ORCHESTRATEUR PRINCIPAL
 # ─────────────────────────────────────────────────────────────────────────────
 _circuit_v2_modules = {}
+
+_WIZARD_RESET_RE = re.compile(
+    r"\b(?:annul(?:e|er|ez)?|abandon(?:ne|ner|nez)?|"
+    r"stop(?:per|pez)?|recommenc(?:e|er|ez)?|reset)\b",
+    re.IGNORECASE,
+)
 
 
 def _load_circuit_v2_modules():
@@ -135,11 +148,17 @@ def _load_circuit_v2_modules():
     backend_path = os.path.abspath(
         os.path.join(_chatbot_path, "..", "AgentHistorique", "backend")
     )
-    if backend_path not in sys.path:
-        sys.path.insert(0, backend_path)
+    if backend_path in sys.path:
+        sys.path.remove(backend_path)
+    sys.path.insert(0, backend_path)
+    # _project_root (E:\claude, racine d'app.py) doit être retiré le
+    # temps de l'import, sinon il passe devant backend_path dans
+    # sys.path et 'app' se résout vers app.py au lieu du package
+    project_root_was_in_path = _project_root in sys.path
+    if project_root_was_in_path:
 
-    # Retirer temporairement 'app' (et ses sous-modules) du cache d'imports,
-    # pour que Python résolve 'app' vers AgentHistorique/backend/app/ (un vrai package).
+        sys.path.remove(_project_root)
+
     saved = {
         name: mod for name, mod in list(sys.modules.items())
         if name == "app" or name.startswith("app.")
@@ -150,6 +169,7 @@ def _load_circuit_v2_modules():
     try:
         from app.database import SessionLocal
         from app.agents.circuit_agent import CircuitAgent, CircuitAgentError
+        from app.models.monument import Monument
         from app.schemas.circuit_agent import (
             CircuitRecommendationRequest,
             CircuitPreferences,
@@ -162,6 +182,7 @@ def _load_circuit_v2_modules():
             CircuitPreferences=CircuitPreferences,
             CircuitRecommendationResponse=CircuitRecommendationResponse,
             CircuitAgentError=CircuitAgentError,
+            Monument=Monument,
         )
         # Renommer dans le cache pour ne plus jamais entrer en collision avec le 'app' racine
         for name in list(sys.modules.keys()):
@@ -172,6 +193,9 @@ def _load_circuit_v2_modules():
         # Restaurer le 'app' racine (app.py d'uvicorn) exactement comme avant
         for name, mod in saved.items():
             sys.modules[name] = mod
+
+        if project_root_was_in_path and _project_root not in sys.path:
+            sys.path.insert(0, _project_root)
 
     return _circuit_v2_modules
 
@@ -285,7 +309,10 @@ class OrchestratorAgent:
                 )
             # ── ÉTAPE 2quater : Mode terrain — user répond à une notification monument ──
             monument_en_attente = profil.get("monument_en_attente")
-            if monument_en_attente and is_affirmation(message):
+            if monument_en_attente and (
+                is_affirmation(message)
+                or self._mentions_monument(message, monument_en_attente.get("nom", ""))
+            ):
                 return await self._handle_terrain_question(
                     user_id=user_id,
                     monument_id=monument_en_attente["id"],
@@ -332,6 +359,69 @@ class OrchestratorAgent:
                 return reponse_finale
 
             wizard = await wizard_store.get(user_id)
+
+            if (
+                wizard
+                and wizard.state == WizardState.CUSTOMIZATION_BUDGET
+                and not action
+                and not contient_demande_reservation(message)
+            ):
+                budget_match = re.search(
+                    r"(?<!\d)(?P<amount>\d+(?:[.,]\d{1,2})?)\s*"
+                    r"(?P<currency>dt|tnd|dinars?)\b",
+                    message,
+                    re.IGNORECASE,
+                )
+                if budget_match:
+                    tarif = onboarding.detect_tarif(message)
+                    if tarif:
+                        budget = {
+                            "type": tarif,
+                            "amount": float(
+                                budget_match.group("amount").replace(",", ".")
+                            ),
+                        }
+                        wizard = apply_event(
+                            wizard,
+                            WizardEvent(type="set_budget", value=budget),
+                        )
+                        await wizard_store.save(wizard)
+                        reponse_finale = question_for_state(wizard.state, langue)
+                    else:
+                        reponse_finale = question_for_budget_category(langue)
+
+                    await self._update_memory(
+                        user_id=user_id,
+                        message=message,
+                        reponse=reponse_finale,
+                        signaux={"wizard_state": wizard.state.value},
+                        langue=langue,
+                        intention="WIZARD",
+                        historique=historique,
+                        profil=profil,
+                    )
+                    return reponse_finale
+
+                # Texte libre pendant un wizard actif : ne jamais redémarrer
+                # le wizard ni laisser une classification ambiguë écraser son état.
+
+                # Texte libre pendant un wizard actif : ne jamais redémarrer
+            # le wizard ni laisser une classification ambiguë écraser son état.
+
+            if wizard and wizard.state != WizardState.IDLE and not action:
+                # Une demande de réservation explicite reste routée normalement.
+                if contient_demande_reservation(message):
+                    pass
+                elif _WIZARD_RESET_RE.search(message):
+                    wizard = reset_wizard(user_id)
+                    await wizard_store.save(wizard)
+                    return (
+                        "D'accord, le circuit en cours est annulé. "
+                        "Vous pourrez en démarrer un nouveau quand vous le souhaitez."
+                    )
+                else:
+                    return question_for_state(wizard.state, langue)
+
             if wizard and wizard.state != WizardState.IDLE and action:
                 event_type = None
                 try:
@@ -355,15 +445,18 @@ class OrchestratorAgent:
 
                 if event_type == "confirm_guide_mode":
                     activer = action.get("value") == "yes"
+                    circuit_data = (wizard.circuit_result or {}).get("circuit") or {}
+                    circuit_confirme_id = (str(uuid.uuid4()) if activer else None)
                     update_profile(
                         user_id,
                         {
                             "mode_guide_actif": activer,
-                            "circuit_confirme_id": (wizard.circuit_result or {}).get(
-                                "circuit_id"
-                            ),
-                            "circuit_confirme_nom": (wizard.circuit_result or {}).get(
-                                "title"
+                            "circuit_confirme_id":
+    circuit_confirme_id,
+                            
+                            "circuit_confirme_nom": circuit_data.get("title"),
+                            "circuit_etapes": (
+                                circuit_data.get("monuments") or [] if activer else []
                             ),
                         },
                     )
@@ -453,7 +546,6 @@ class OrchestratorAgent:
                     )
                     profil_update = {"last_packs": [pack_to_card_dict(p) for p in filtered]}
                     update_profile(user_id, profil_update)
-                    
 
                     await self._update_memory(
                         user_id=user_id,
@@ -470,7 +562,7 @@ class OrchestratorAgent:
                     reponse_finale = get_filter_question(lang=langue)
                     profil_update = {"attente_filtre_pack": True}
                     update_profile(user_id, profil_update)
-                    
+
                     await self._update_memory(
                         user_id=user_id,
                         message=message,
@@ -489,7 +581,9 @@ class OrchestratorAgent:
             log.info(f"  Signaux extraits : {signaux}")
 
             # ── ÉTAPE 4 : Classification intention (LLM rapide) ───────────
-            intention_data = await self._detect_intent(message, langue, historique)
+            intention_data = await self._detect_intent(
+                message, langue, historique, session_id=user_id
+            )
             intention = intention_data.get("intention", "SMALLTALK")
             confiance = intention_data.get("confiance", 0.5)
             derniere_intention = profil.get("derniere_intention", "")
@@ -602,6 +696,7 @@ class OrchestratorAgent:
 
             # ── ÉTAPE 6 : Synthèse narrative finale ───────────────────────
             attente_circuit = profil.get("attente_confirmation_circuit", False)
+            generation_tronquee = False
 
             if intention == "RESERVATION" and "agent_reservation" in agents_responses:
                 res_data = agents_responses["agent_reservation"]
@@ -616,7 +711,36 @@ class OrchestratorAgent:
             # ── Court-circuit agent historique ────────────────────────────
             elif intention == "HISTORIQUE" and "agent_guide" in agents_responses:
                 hist = agents_responses["agent_guide"]
-                if hist.get("answer") and not hist.get("error"):
+                if hist.get("error"):
+                    error_reason = str(hist["error"])
+                    log.error(
+                        "[HISTORIQUE] Worker indisponible: %s (query=%r)",
+                        error_reason,
+                        message[:120],
+                    )
+                    historique_fallbacks = {
+                        "FR": "Le guide historique est momentanément indisponible. Réessayez dans quelques instants.",
+                        "EN": "The historical guide is temporarily unavailable. Please try again shortly.",
+                        "AR": "المرشد التاريخي غير متاح مؤقتاً. يرجى المحاولة بعد قليل.",
+                        "IT": "La guida storica è temporaneamente non disponibile. Riprova tra poco.",
+                        "DE": "Der historische Guide ist momentan nicht verfügbar. Bitte versuchen Sie es später erneut.",
+                    }
+                    reponse_finale = historique_fallbacks.get(
+                        langue, historique_fallbacks["FR"]
+                    )
+                    await self._update_memory(
+                        user_id=user_id,
+                        message=message,
+                        reponse=reponse_finale,
+                        signaux=signaux,
+                        langue=langue,
+                        intention="HISTORIQUE",
+                        historique=historique,
+                        profil=profil,
+                    )
+                    return reponse_finale
+
+                if hist.get("answer"):
                     answer = hist["answer"]
                     reponse_llm_brute = (
                         answer  # NOUVEAU : copie AVANT ajout du suffixe Sources
@@ -641,7 +765,7 @@ class OrchestratorAgent:
                     return reponse_finale
 
             elif intention == "SMALLTALK":
-                reponse_finale = await self._respond_smalltalk(
+                reponse_finale, generation_tronquee = await self._respond_smalltalk(
                     message, langue, historique
                 )
             else:
@@ -658,6 +782,9 @@ class OrchestratorAgent:
             if (
                 intention != "RESERVATION"
                 and not attente_circuit
+                and not (
+                    intention == "SMALLTALK" and generation_tronquee
+                )
                 and not profil.get("proposition_circuit_faite")
                 and not profil.get("mode_onboarding")
             ):
@@ -848,7 +975,11 @@ class OrchestratorAgent:
     # ─────────────────────────────────────────────────────────────────────────
 
     async def _detect_intent(
-        self, message: str, langue: str, historique: list = []
+        self,
+        message: str,
+        langue: str,
+        historique: list = [],
+        session_id: str = "",
     ) -> dict:
         """
         Classifie l'intention du message via LLM rapide (llama-3.1-8b-instant).
@@ -868,8 +999,10 @@ class OrchestratorAgent:
                 asyncio.to_thread(
                     self._groq.chat.completions.create,
                     model=MODEL_FAST,
-                    max_tokens=150,
-                    temperature=0.1,
+                    max_tokens=700,
+                    temperature=0.65,
+                    reasoning_effort="none",
+                    include_reasoning=False,
                     response_format={"type": "json_object"},
                     messages=[
                         {"role": "system", "content": SYSTEM_PROMPT_INTENTION},
@@ -892,6 +1025,13 @@ class OrchestratorAgent:
             if result.get("intention") not in INTENTIONS_VALIDES:
                 result["intention"] = "SMALLTALK"
                 result["confiance"] = 0.5
+
+            log.info(
+                "[INTENT] classified session_id=%s intention=%s confiance=%s",
+                session_id,
+                result.get("intention"),
+                result.get("confiance"),
+            )
 
             tokens = getattr(response, "usage", None)
             tokens_used = (
@@ -1243,10 +1383,12 @@ class OrchestratorAgent:
     async def _generate_wizard_circuit(
         self, user_id: str, wizard, wizard_store, langue: str
     ) -> str:
-        from circuit_engine import MONUMENTS_CACHE
+
         mods = _load_circuit_v2_modules()
         CircuitRecommendationRequest = mods["CircuitRecommendationRequest"]
         CircuitPreferences = mods["CircuitPreferences"]
+        SessionLocal = mods["SessionLocal"]
+        Monument = mods["Monument"]
 
         budget = wizard.budget or {}
         dates_dict = wizard.dates or {}
@@ -1266,17 +1408,30 @@ class OrchestratorAgent:
             except ValueError:
                 pass
 
+        elif dates_dict.get("duration_hours"):
+            try:
+                duree_max = int(float(dates_dict["duration_hours"]) * 60)
+            except (TypeError, ValueError):
+                pass
         if duree_max is None:
             duree_max = 180  # valeur par défaut raisonnable (3h), à ajuster selon le produit
 
-        must_visit_names = []
-        for i in wizard.must_visit or []:
-            if str(i).isdigit():
-                idx = int(i)
-                if 0 <= idx < len(MONUMENTS_CACHE):
-                    nom = MONUMENTS_CACHE[idx].get("nom")
-                    if nom:
-                        must_visit_names.append(nom)
+        # Résout les id_str sélectionnés en PLACE_SELECTION vers des noms,
+        # requis par CircuitPreferences.must_visit (list[str] de noms).
+        # Si must_visit est vide (étape skip par l'utilisateur), on ne
+        # fait aucune requête et must_visit_names reste vide sans erreur.
+        must_visit_ids = {str(i) for i in (wizard.must_visit or []) if i}
+        must_visit_names: list[str] = []
+        if must_visit_ids:
+            db = SessionLocal()
+            try:
+                monuments = db.query(Monument).all()
+            finally:
+                db.close()
+            id_to_name = {m.id_str: m.name_fr for m in monuments if m.id_str}
+            must_visit_names = [
+                id_to_name[i] for i in must_visit_ids if i in id_to_name
+            ]
 
         epoques = wizard.epoques or []
         fonctions = wizard.fonctions or []
@@ -1408,6 +1563,10 @@ class OrchestratorAgent:
     # ─────────────────────────────────────────────────────────────────────────
     # MODE GUIDE TERRAIN
     # ─────────────────────────────────────────────────────────────────────────
+    @staticmethod
+    def _mentions_monument(message: str, nom: str) -> bool:
+        """True si le message cite le nom du monument en attente (insensible à la casse)."""
+        return bool(nom) and nom.casefold() in (message or "").casefold()
 
     async def handle_proximity_trigger(
         self,
@@ -1473,11 +1632,56 @@ class OrchestratorAgent:
 
         # ── Construire le contexte pour le LLM ───────────────────────────
         description = monument.get("description", "")
+        description_verifiee = bool(description)
         duree = monument.get("duree_visite_min", 0)
         statut = monument.get("statut", "")
         horaires = monument.get("horaires", {})
         accessibilite = monument.get("accessibilite", "")
 
+        # ── Pas de description en base → on va la chercher via l'agent
+        # historique (RAG + fallback web) plutôt que de laisser le LLM
+        # narratif inventer une description à partir de rien.
+        if not description:
+            try:
+                requete_hist = f"Parle-moi de {monument.get('nom', monument_nom)} à Carthage"
+                embedding = list(self._encode_cached(requete_hist))
+                hist_result = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self._historical.query,
+                        query=requete_hist,
+                        query_embedding=embedding,
+                        language=langue.lower(),
+                        session_context={},
+                        web_search_enabled=True,
+                    ),
+                    timeout=25.0,
+                )
+                if isinstance(hist_result, dict) and hist_result.get("sources"):
+                    description = hist_result["answer"]
+                    description_verifiee = True
+                else:
+                    log.info(
+                        f"[TERRAIN] Fallback historique sans résultat exploitable pour {monument_nom}"
+                    )
+            except Exception as e:
+                log.warning(f"[TERRAIN] Fallback historique indisponible : {e}")
+        
+        # ── Ni description en base, ni fallback historique exploitable :
+        # on arrête ici plutôt que de laisser le LLM narratif "combler le
+        # vide" — c'est cette étape qui causait l'invention de détails
+        # (souk, marbre sculpté, caravansérails...) sur la Rotonde.
+        if not description_verifiee:
+            reponse_finale = (
+                f"Je n'ai pas encore d'information vérifiée sur {monument.get('nom', monument_nom)}. "
+                "Ce que je peux vous confirmer, c'est que ce site fait bien partie du circuit de Carthage"
+                + (f", prévu pour environ {duree} minutes de visite" if duree else "")
+                + ". N'hésitez pas à me demander un autre monument du circuit !"
+            )
+            clear_profile_fields(user_id, "monument_en_attente")
+            historique.append({"role": "user", "content": message})
+            historique.append({"role": "assistant", "content": reponse_finale})
+            set_history(user_id, historique)
+            return reponse_finale
         # Déterminer horaires selon saison (simple : mois > 4 et < 10 = été)
         import datetime
 
@@ -1516,8 +1720,10 @@ Génère une présentation narrative vivante en {langue_nom}.
                 asyncio.to_thread(
                     self._groq.chat.completions.create,
                     model=MODEL_SMART,
-                    max_tokens=400,
+                    max_tokens=700,
                     temperature=0.65,
+                    reasoning_effort="low",
+                    include_reasoning=False,
                     messages=[
                         {
                             "role": "system",
@@ -1583,7 +1789,9 @@ Génère une présentation narrative vivante en {langue_nom}.
         langue = langue or profil.get("langue", "FR")
 
         # Question hors-sujet (météo, pratique…) pendant le probing : répondre sans avancer
-        intention_data = await self._detect_intent(message, langue, historique)
+        intention_data = await self._detect_intent(
+            message, langue, historique, session_id=user_id
+        )
         intention_hs = intention_data.get("intention", "SMALLTALK")
         confiance_hs = intention_data.get("confiance", 0.0)
         if intention_hs == "METEO" and confiance_hs >= 0.8:
@@ -1826,7 +2034,7 @@ Génère une présentation narrative vivante en {langue_nom}.
         message: str,
         langue: str,
         historique: list,
-    ) -> str:
+    ) -> tuple[str, bool]:
         """
         Génère une réponse smalltalk directement (sans passer par les agents).
         L'orchestrateur répond lui-même avec le style Aziz.
@@ -1849,18 +2057,28 @@ Génère une présentation narrative vivante en {langue_nom}.
                 asyncio.to_thread(
                     self._groq.chat.completions.create,
                     model=MODEL_SMART,
-                    max_tokens=300,
+                    max_tokens=700,
+                    reasoning_effort="low",
+                    include_reasoning=False,
                     temperature=0.7,
                     messages=messages_llm,
                 ),
                 timeout=AGENT_TIMEOUT_SECONDS,
             )
 
-            return (response.choices[0].message.content or "").strip()
+            finish_reason = getattr(response.choices[0], "finish_reason", None)
+            log.info(
+                "[SMALLTALK] finish_reason=%s",
+                finish_reason,
+            )
+            return (
+                (response.choices[0].message.content or "").strip(),
+                finish_reason == "length",
+            )
 
         except Exception as e:
             log.warning(f"[SMALLTALK] Erreur : {e}")
-            return FALLBACK_MESSAGES.get(langue, FALLBACK_MESSAGES["FR"])
+            return FALLBACK_MESSAGES.get(langue, FALLBACK_MESSAGES["FR"]), False
 
     # ─────────────────────────────────────────────────────────────────────────
     # SYNTHÈSE NARRATIVE FINALE
@@ -1920,16 +2138,24 @@ Génère une présentation narrative vivante en {langue_nom}.
                 asyncio.to_thread(
                     self._groq.chat.completions.create,
                     model=MODEL_SMART,
-                    max_tokens=400,
+                    max_tokens=700,
                     temperature=0.65,
+                    reasoning_effort="low",
+                    include_reasoning=False,
                     messages=messages_llm,
                 ),
                 timeout=AGENT_TIMEOUT_SECONDS + 5,  # Synthèse a droit à +5s
             )
 
+            log.info(
+                "[SYNTHESE] finish_reason=%s",
+                getattr(response.choices[0], "finish_reason", None),
+            )
             tokens = response.usage.total_tokens if response.usage else 0
             log.info(f"[SYNTHESE] Tokens utilisés : {tokens}")
 
+            if response.choices[0].finish_reason == "length":
+                log.warning("[SYNTHESE] Réponse tronquée (finish_reason=length)")
             return (response.choices[0].message.content or "").strip()
 
         except asyncio.TimeoutError:
@@ -2090,6 +2316,7 @@ Génère une présentation narrative vivante en {langue_nom}.
                     question_originale=message,
                     embedding_model=self._embedding_model,
                 )
+
             else:
                 guard_result = check_output_generic(
                     reponse=texte_guard,
