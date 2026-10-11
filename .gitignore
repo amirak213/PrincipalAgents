@@ -1,8 +1,9 @@
-﻿.vscode/
+.vscode/
 __pycache__/
 venv/
-.env
-*.pycd
+.env*
+!.env.example
+*.pyc
 dump.rdb
 frontend/dist/
 *.log
@@ -10,3 +11,8 @@ node_modules/
 dourbia_v10_final/
 tests/
 tests_manuels/
+.venv/
+.vite/
+.pytest_cache/
+dist/
+*.dump
