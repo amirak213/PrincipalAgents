@@ -49,6 +49,8 @@ export default function CircuitMapPanel() {
         total_duration_min: activeCircuit.total_duration_min,
         total_distance_km: 0,
         total_price: activeCircuit.total_price,
+        unknown_price_count: activeCircuit.unknown_price_count,
+        budget_max: activeCircuit.budget_max,
         score: 0,
       },
       route: activeCircuit.route ?? { transport: "walking", polyline: [], segments: [] },

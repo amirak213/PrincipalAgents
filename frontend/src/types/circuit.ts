@@ -45,7 +45,7 @@ export interface RecommendedMonument {
   latitude: number;
   longitude: number;
   visit_duration_min: number;
-  price: number;
+  price: number | null;
   arrival_time?: string | null;
   departure_time?: string | null;
   reason: string;
@@ -60,6 +60,8 @@ export interface CircuitSummary {
   total_duration_min: number;
   total_distance_km: number;
   total_price: number;
+  unknown_price_count: number;
+  budget_max?: number | null;
   score: number;
 }
 

@@ -31,7 +31,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("chatbot.chat")
 
-from orchestrateur import OrchestratorAgent
+from AgentPrincipal.orchestrateur import OrchestratorAgent
 
 # ─────────────────────────────────────────────────────────────────────────────
 # INSTANCE GLOBALE (singleton — évite de réinstancier à chaque message)

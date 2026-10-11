@@ -135,6 +135,20 @@ source venv/bin/activate   # ou venv\Scripts\activate sous Windows
 pip install -r requirements.txt
 ```
 
+## Vérifier les tarifs des circuits
+
+Depuis PowerShell, avec `psql` installé et un accès à la base circuits :
+
+```powershell
+.\scripts\check_circuit_tariffs.ps1
+```
+
+Pour mettre à jour les tarifs des monuments déjà présents depuis le CSV, depuis la racine :
+
+```powershell
+python .\AgentHistorique\backend\migrate_monuments.py --csv .\AgentHistorique\backend\monuments.csv --update-existing-tariffs
+```
+
 Chaque sous-dossier a aussi son `.env` propre (clé Groq, identifiants PostgreSQL/Redis,
 chemins de fichiers). **Ne jamais committer les `.env` réels** — utiliser `.env.example`.
 

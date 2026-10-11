@@ -343,7 +343,7 @@ class OrchestratorAgent:
             wizard_store = WizardStore(await get_redis())
 
             if action and action.get("type") == "start_wizard":
-                wizard = start_wizard(user_id, None)
+                wizard = start_wizard(user_id)
                 await wizard_store.save(wizard)
                 reponse_finale = question_for_state(wizard.state, langue)
                 await self._update_memory(
@@ -667,7 +667,7 @@ class OrchestratorAgent:
             )
             if veut_circuit:
                 wizard_store = WizardStore(await get_redis())
-                wizard = start_wizard(user_id, signaux)
+                wizard = start_wizard(user_id)
                 await wizard_store.save(wizard)
                 reponse_finale = question_for_state(wizard.state, langue)
                 await self._update_memory(
@@ -1391,30 +1391,10 @@ class OrchestratorAgent:
         Monument = mods["Monument"]
 
         budget = wizard.budget or {}
-        dates_dict = wizard.dates or {}
-        start_time = dates_dict.get("start_time")
-        end_time = dates_dict.get("end_time")
-
-        duree_max = None
-        if start_time and end_time:
-            from datetime import datetime
-            try:
-                t1 = datetime.strptime(start_time, "%H:%M")
-                t2 = datetime.strptime(end_time, "%H:%M")
-                delta = t2 - t1
-                duree_max = int(delta.total_seconds() // 60)
-                if duree_max <= 0:
-                    duree_max += 24 * 60
-            except ValueError:
-                pass
-
-        elif dates_dict.get("duration_hours"):
-            try:
-                duree_max = int(float(dates_dict["duration_hours"]) * 60)
-            except (TypeError, ValueError):
-                pass
-        if duree_max is None:
-            duree_max = 180  # valeur par défaut raisonnable (3h), à ajuster selon le produit
+        time_constraints = wizard.time_constraints or {}
+        start_time = time_constraints.get("start_time")
+        end_time = time_constraints.get("end_time")
+        duration_minutes = time_constraints.get("duration_minutes")
 
         # Résout les id_str sélectionnés en PLACE_SELECTION vers des noms,
         # requis par CircuitPreferences.must_visit (list[str] de noms).
@@ -1442,6 +1422,7 @@ class OrchestratorAgent:
             type_tarif=budget.get("type", "etranger"),
             budget_max=budget.get("amount", 9999),
             transport=wizard.mobility or "walking",
+            mobilite=wizard.mobilite,
             zone="Carthage",
             preferences=CircuitPreferences(
                 epoques=epoques,
@@ -1450,7 +1431,7 @@ class OrchestratorAgent:
                 avoid=[],
             ),
             max_stops=12,
-            duration_minutes=duree_max,
+            duration_minutes=duration_minutes,
             start_time=start_time,
             end_time=end_time,
         )

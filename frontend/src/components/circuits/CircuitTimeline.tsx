@@ -28,7 +28,7 @@ export default function CircuitTimeline({ monuments, onAskGuide }: CircuitTimeli
                   </span>
                 )}
                 <span>
-                  {Math.round(monument.visit_duration_min)} min · {monument.price.toFixed(0)} DT
+                  {Math.round(monument.visit_duration_min)} min · {monument.price == null ? "Tarif non renseigné" : `${monument.price.toFixed(0)} DT`}
                 </span>
               </div>
               {monument.reason && (

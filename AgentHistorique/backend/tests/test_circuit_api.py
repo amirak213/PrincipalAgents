@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
 from app.agents.circuit_agent import CircuitAgentResult
+from app.circuits.constraints import ConstraintContext
+from app.circuits.data_loader import CircuitDataLoader, MonumentNode, get_monument_price
+from app.circuits.route_builder import build_route
 from app.main import app
 from app.schemas.circuit_agent import (
     CircuitConstraintsStatus,
@@ -42,6 +46,8 @@ def _sample_response() -> CircuitRecommendationResponse:
             total_duration_min=70,
             total_distance_km=0.8,
             total_price=2,
+            unknown_price_count=0,
+            budget_max=30,
             score=0.87,
         ),
         route=MapRoutePayload(
@@ -107,6 +113,8 @@ def test_circuit_recommend_endpoint_returns_expected_schema() -> None:
     assert payload["session_id"] == "session_001"
     assert payload["circuit"]["title"].startswith("Circuit personnalisé")
     assert payload["circuit"]["monuments"][0]["name"] == "Thermes d'Antonin"
+    assert payload["circuit"]["budget_max"] == 30
+    assert payload["circuit"]["unknown_price_count"] == 0
     assert payload["route"]["transport"] == "walking"
     assert payload["constraints"]["budget_ok"] is True
     assert payload["explanation"]
@@ -134,6 +142,8 @@ def test_circuit_recommend_impossible_constraints_returns_422() -> None:
                 "duration_minutes": 15,
                 "zone": "Carthage",
                 "preferences": {
+                    "epoques": [],
+                    "fonctions": [],
                     "must_visit": ["Monument Inexistant"],
                     "avoid": [],
                 },
@@ -142,3 +152,78 @@ def test_circuit_recommend_impossible_constraints_returns_422() -> None:
 
     assert response.status_code == 422
     assert "introuvable" in response.json()["detail"].lower() or "réalisable" in response.json()["detail"].lower()
+
+
+def test_loader_keeps_database_null_price_as_none() -> None:
+    monument = SimpleNamespace(
+        id_str="1",
+        name_fr="Tarif inconnu",
+        latitude_float=36.8,
+        longitude_float=10.3,
+        visit_duration_minutes=30,
+        priority=3,
+        dominant_period=None,
+        secondary_period=None,
+        third_period=None,
+        function=None,
+        accessibility=None,
+        relief=None,
+        price_student=None,
+    )
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = [monument]
+
+    nodes = CircuitDataLoader(db).load_monuments("etudiant")
+
+    assert nodes["1"].price is None
+    assert get_monument_price(monument, "etudiant") is None
+
+
+def test_route_total_sums_selected_profile_prices_and_counts_unknowns() -> None:
+    profile_prices = [
+        get_monument_price(SimpleNamespace(price_student=Decimal("2")), "etudiant"),
+        get_monument_price(SimpleNamespace(price_student=Decimal("3.5")), "etudiant"),
+    ]
+    candidates = {
+        "1": MonumentNode(
+            id="1", name="Payant A", latitude=36.8, longitude=10.3,
+            visit_duration_min=20, price=profile_prices[0],
+        ),
+        "2": MonumentNode(
+            id="2", name="Payant B", latitude=36.81, longitude=10.31,
+            visit_duration_min=20, price=profile_prices[1],
+        ),
+        "3": MonumentNode(
+            id="3", name="Inconnu", latitude=36.82, longitude=10.32,
+            visit_duration_min=20, price=None,
+        ),
+    }
+    context = ConstraintContext(
+        budget_max=100,
+        duration_minutes=180,
+        mobilite="normale",
+        required_ids=frozenset(),
+        excluded_ids=frozenset(),
+    )
+
+    class NoRoute:
+        @staticmethod
+        def shortest_path(_from_id: str, _to_id: str):
+            return None
+
+    route = build_route(
+        ["1", "2", "3"],
+        candidates=candidates,
+        router=NoRoute(),
+        context=context,
+        fitness_score=0.8,
+        preferred_periods=[],
+        preferred_functions=[],
+        transport="walking",
+        start_time=None,
+        zone="Carthage",
+    )
+
+    assert route.total_price == 5.5
+    assert route.unknown_price_count == 1
+    assert route.monuments[2]["price"] is None

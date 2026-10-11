@@ -18,9 +18,9 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from datetime import timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -33,12 +33,11 @@ import redis.asyncio as aioredis
 
 class WizardState(str, Enum):
     IDLE = "IDLE"
-    CITY_SELECTION = "CITY_SELECTION"
     PLACE_SELECTION = "PLACE_SELECTION"
     CUSTOMIZATION_BUDGET = "CUSTOMIZATION_BUDGET"
     CUSTOMIZATION_MOBILITY = "CUSTOMIZATION_MOBILITY"
+    CUSTOMIZATION_TIME = "CUSTOMIZATION_TIME"
     CUSTOMIZATION_PREFERENCES = "CUSTOMIZATION_PREFERENCES"
-    CUSTOMIZATION_DATES = "CUSTOMIZATION_DATES"
     CIRCUIT_GENERATION = "CIRCUIT_GENERATION"  # état transitoire, pas d'input user
     CIRCUIT_REVIEW = "CIRCUIT_REVIEW"
     CIRCUIT_ADJUSTMENT = "CIRCUIT_ADJUSTMENT"
@@ -48,12 +47,11 @@ class WizardState(str, Enum):
 # Ordre "nominal" du wizard, utilisé pour savoir quel est l'état suivant
 # par défaut quand un handler ne redirige pas ailleurs explicitement.
 NOMINAL_ORDER: list[WizardState] = [
-    WizardState.CITY_SELECTION,
-    WizardState.PLACE_SELECTION,
     WizardState.CUSTOMIZATION_BUDGET,
     WizardState.CUSTOMIZATION_MOBILITY,
+    WizardState.CUSTOMIZATION_TIME,
     WizardState.CUSTOMIZATION_PREFERENCES,
-    WizardState.CUSTOMIZATION_DATES,
+    WizardState.PLACE_SELECTION,
     WizardState.CIRCUIT_GENERATION,
     WizardState.CIRCUIT_REVIEW,
 ]
@@ -68,16 +66,16 @@ NOMINAL_ORDER: list[WizardState] = [
 class WizardSession:
     session_id: str
     state: WizardState = WizardState.IDLE
-    city: Optional[str] = None  # "carthage" | "la_marsa"
     must_visit: list[str] = field(default_factory=list)  # ids monuments
     budget: Optional[dict[str, Any]] = (
         None  # {"type": "resident"|"etranger", "amount": float}
     )
-    mobility: Optional[str] = None  # "walking" | "car" | "bike"
+    mobility: Optional[str] = None  # transport: "walking" | "bike" | "car" | ...
+    mobilite: Optional[str] = None  # niveau: "normale" | "reduite" | "limitee"
     epoques: list[str] = field(default_factory=list)
     fonctions: list[str] = field(default_factory=list)
-    dates: Optional[dict[str, Any]] = (
-        None  # {"date": "2026-07-20", "start_time": "09:00", "end_time": "11:00"}
+    time_constraints: Optional[dict[str, Any]] = (
+        None  # {"duration_minutes": 120, "start_time": "09:00", "end_time": "11:00"}
     )
     places_offset: int = 0
     circuit_result: Optional[dict[str, Any]] = (
@@ -95,7 +93,37 @@ class WizardSession:
     @staticmethod
     def from_json(raw: str) -> "WizardSession":
         d = json.loads(raw)
-        d["state"] = WizardState(d["state"])
+        legacy_state = d.pop("state")
+        d.pop("city", None)
+        legacy_dates = d.pop("dates", None)
+        if "time_constraints" not in d:
+            time_constraints = (
+                {
+                    key: value
+                    for key, value in legacy_dates.items()
+                    if key in {"duration_minutes", "start_time", "end_time"}
+                }
+                if isinstance(legacy_dates, dict)
+                else {}
+            )
+            if "duration_minutes" not in time_constraints and isinstance(legacy_dates, dict):
+                legacy_hours = legacy_dates.get("duration_hours")
+                if legacy_hours is not None:
+                    try:
+                        time_constraints["duration_minutes"] = int(float(legacy_hours) * 60)
+                    except (TypeError, ValueError):
+                        pass
+            d["time_constraints"] = time_constraints or None
+
+        if legacy_state == "CITY_SELECTION":
+            legacy_state = WizardState.CUSTOMIZATION_BUDGET.value
+        elif legacy_state == "CUSTOMIZATION_DATES":
+            legacy_state = WizardState.CUSTOMIZATION_TIME.value
+        elif legacy_state == "PLACE_SELECTION" and not d.get("budget"):
+            legacy_state = WizardState.CUSTOMIZATION_BUDGET.value
+        elif legacy_state == "CUSTOMIZATION_PREFERENCES" and not d.get("time_constraints"):
+            legacy_state = WizardState.CUSTOMIZATION_TIME.value
+        d["state"] = WizardState(legacy_state)
         return WizardSession(**d)
 
 
@@ -152,7 +180,7 @@ class WizardStore:
 
 @dataclass
 class WizardEvent:
-    type: str  # ex: "select_city", "select_places", "set_budget", ...
+    type: str  # ex: "select_places", "set_budget", "set_mobility", "set_time", ...
     value: Any = None
 
 
@@ -171,17 +199,6 @@ class WizardValidationError(ValueError):
     question courante), sans changer l'état du wizard.
     """
 
-def handle_city_selection(wizard: WizardSession, event: WizardEvent) -> WizardSession:
-    if event.type != "select_city":
-        raise ValueError(f"Événement inattendu en CITY_SELECTION: {event.type}")
-    city = _normalize_city(event.value) if isinstance(event.value, str) else None
-    if city is None:
-        raise WizardValidationError(f"Ville invalide: {event.value!r}")
-    wizard.city = city  # "carthage" | "la_marsa"
-    wizard.state = WizardState.PLACE_SELECTION
-    return wizard
-
-
 def handle_place_selection(wizard: WizardSession, event: WizardEvent) -> WizardSession:
     if event.type != "select_places":
         raise ValueError(f"Événement inattendu en PLACE_SELECTION: {event.type}")
@@ -189,7 +206,7 @@ def handle_place_selection(wizard: WizardSession, event: WizardEvent) -> WizardS
     if not isinstance(value, (list, tuple)) or len(value) > 50:
         raise WizardValidationError("Liste de lieux invalide")
     wizard.must_visit = list(value)
-    wizard.state = WizardState.CUSTOMIZATION_BUDGET
+    wizard.state = WizardState.CIRCUIT_GENERATION
     return wizard
 
 
@@ -207,6 +224,11 @@ def handle_budget(wizard: WizardSession, event: WizardEvent) -> WizardSession:
     value = event.value
     if not isinstance(value, dict):
         raise WizardValidationError("Budget invalide")
+    tariff_type = value.get("type")
+    if not isinstance(tariff_type, str) or tariff_type not in {
+        "resident", "etudiant", "etranger", "enseignant", "retraite", "enfant"
+    }:
+        raise WizardValidationError("Profil tarifaire manquant ou invalide")
     raw_amount = value.get("amount")
     if raw_amount is None or isinstance(raw_amount, bool):
         raise WizardValidationError("Montant du budget manquant")
@@ -224,10 +246,25 @@ def handle_budget(wizard: WizardSession, event: WizardEvent) -> WizardSession:
 def handle_mobility(wizard: WizardSession, event: WizardEvent) -> WizardSession:
     if event.type != "set_mobility":
         raise ValueError(f"Événement inattendu en CUSTOMIZATION_MOBILITY: {event.type}")
-    if not isinstance(event.value, str) or not event.value.strip() or len(event.value) > 32:
-        raise WizardValidationError(f"Mobilité invalide: {event.value!r}")
-    wizard.mobility = event.value.strip()  # "walking" | "car" | "bike"
-    wizard.state = WizardState.CUSTOMIZATION_PREFERENCES
+    if not isinstance(event.value, dict):
+        raise WizardValidationError("Transport et mobilité requis")
+
+    transport = event.value.get("transport")
+    mobilite = event.value.get("mobilite")
+    transports_valides = {
+        "walking", "bike", "car", "public_transport", "pied", "velo", "voiture"
+    }
+    mobilites_valides = {
+        "normale", "reduite", "limitee", "full", "reduced", "limited"
+    }
+    if not isinstance(transport, str) or transport.strip() not in transports_valides:
+        raise WizardValidationError(f"Transport invalide: {transport!r}")
+    if not isinstance(mobilite, str) or mobilite.strip() not in mobilites_valides:
+        raise WizardValidationError(f"Mobilité invalide: {mobilite!r}")
+
+    wizard.mobility = transport.strip()
+    wizard.mobilite = mobilite.strip()
+    wizard.state = WizardState.CUSTOMIZATION_TIME
     return wizard
 
 
@@ -236,43 +273,44 @@ def handle_preferences(wizard: WizardSession, event: WizardEvent) -> WizardSessi
         raise ValueError(f"Événement inattendu en CUSTOMIZATION_PREFERENCES: {event.type}")
     wizard.epoques = event.value.get("epoques", []) if isinstance(event.value, dict) else []
     wizard.fonctions = event.value.get("fonctions", []) if isinstance(event.value, dict) else []
-    wizard.state = WizardState.CUSTOMIZATION_DATES
+    wizard.state = WizardState.PLACE_SELECTION
     return wizard
 
 
-def handle_dates(wizard: WizardSession, event: WizardEvent) -> WizardSession:
-    if event.type != "set_dates":
-        raise ValueError(f"Événement inattendu en CUSTOMIZATION_DATES: {event.type}")
+def handle_time(wizard: WizardSession, event: WizardEvent) -> WizardSession:
+    if event.type != "set_time":
+        raise ValueError(f"Événement inattendu en CUSTOMIZATION_TIME: {event.type}")
     value = event.value
     if not isinstance(value, dict):
-        raise WizardValidationError("Dates invalides")
+        raise WizardValidationError("Durée et horaires invalides")
+    raw_duration = value.get("duration_minutes")
+    if raw_duration is None or isinstance(raw_duration, bool):
+        raise WizardValidationError("Durée manquante")
     try:
-        day = date.fromisoformat(str(value.get("date")))
+        duration = float(raw_duration)
+    except (TypeError, ValueError):
+        raise WizardValidationError("Durée invalide") from None
+    if not math.isfinite(duration) or not 15 <= duration <= 720 or not duration.is_integer():
+        raise WizardValidationError("Durée invalide")
+
+    start_time = value.get("start_time")
+    end_time = value.get("end_time")
+    if not isinstance(start_time, str) or not isinstance(end_time, str):
+        raise WizardValidationError("Horaires manquants")
+    try:
+        start = datetime.strptime(start_time, "%H:%M")
+        end = datetime.strptime(end_time, "%H:%M")
     except ValueError:
-        raise WizardValidationError("Date invalide") from None
-    if day < date.today() - timedelta(days=1):  # tolérance d'un jour (fuseau)
-        raise WizardValidationError("Date dans le passé")
-    if value.get("start_time") is not None or value.get("end_time") is not None:
-        try:
-            start = datetime.strptime(str(value.get("start_time")), "%H:%M")
-            end = datetime.strptime(str(value.get("end_time")), "%H:%M")
-        except ValueError:
-            raise WizardValidationError("Horaires invalides") from None
-        if start >= end:
-            raise WizardValidationError("L'heure de fin doit suivre l'heure de début")
-    else:
-        
-        raw_hours = value.get("duration_hours")
-        if raw_hours is None or isinstance(raw_hours, bool):
-            raise WizardValidationError("Durée ou horaires manquants")
-        try:
-            hours = float(raw_hours)
-        except (TypeError, ValueError):
-            raise WizardValidationError("Durée invalide") from None
-        if not math.isfinite(hours) or not 0 < hours <= 24:
-            raise WizardValidationError("Durée invalide")
-    wizard.dates = value  # {"date", "start_time", "end_time"} ou {"date", "duration_hours"}
-    wizard.state = WizardState.CIRCUIT_GENERATION
+        raise WizardValidationError("Horaires invalides") from None
+    if start >= end:
+        raise WizardValidationError("L'heure de fin doit suivre l'heure de début")
+
+    wizard.time_constraints = {
+        "duration_minutes": int(duration),
+        "start_time": start_time,
+        "end_time": end_time,
+    }
+    wizard.state = WizardState.CUSTOMIZATION_PREFERENCES
     return wizard
 
 
@@ -280,7 +318,7 @@ def handle_circuit_review(wizard: WizardSession, event: WizardEvent) -> WizardSe
     if event.type == "confirm_circuit":
         wizard.state = WizardState.GUIDE_MODE_READY
     elif event.type == "adjust_circuit":
-        # event.value indique quel champ ajuster: "budget" | "mobility" | "dates" | "places"
+        # event.value indique quel champ ajuster: "budget" | "mobility" | "time" | "preferences" | "places"
         wizard.state = WizardState.CIRCUIT_ADJUSTMENT
     elif event.type == "regenerate_circuit":
         wizard.state = WizardState.CIRCUIT_GENERATION
@@ -298,7 +336,7 @@ def handle_circuit_adjustment(
         "budget": WizardState.CUSTOMIZATION_BUDGET,
         "mobility": WizardState.CUSTOMIZATION_MOBILITY,
         "preferences": WizardState.CUSTOMIZATION_PREFERENCES,
-        "dates": WizardState.CUSTOMIZATION_DATES,
+        "time": WizardState.CUSTOMIZATION_TIME,
     }
     target = field_to_state.get(event.value)
     if target is None:
@@ -317,13 +355,12 @@ def handle_guide_mode_ready(wizard: WizardSession, event: WizardEvent) -> Wizard
 
 
 HANDLERS = {
-    WizardState.CITY_SELECTION: handle_city_selection,
     WizardState.PLACE_SELECTION: handle_place_selection,
     
     WizardState.CUSTOMIZATION_BUDGET: handle_budget,
     WizardState.CUSTOMIZATION_MOBILITY: handle_mobility,
     WizardState.CUSTOMIZATION_PREFERENCES: handle_preferences,
-    WizardState.CUSTOMIZATION_DATES: handle_dates,
+    WizardState.CUSTOMIZATION_TIME: handle_time,
     WizardState.CIRCUIT_REVIEW: handle_circuit_review,
     WizardState.CIRCUIT_ADJUSTMENT: handle_circuit_adjustment,
     WizardState.GUIDE_MODE_READY: handle_guide_mode_ready,
@@ -352,40 +389,12 @@ def apply_event(wizard: WizardSession, event: WizardEvent) -> WizardSession:
     return handler(wizard, event)
 
 
-_CITY_ALIASES = {
-    "carthage": "carthage",
-    "la marsa": "la_marsa",
-    "la_marsa": "la_marsa",
-    "marsa": "la_marsa",
-}
-
-
-def _normalize_city(raw: str) -> str | None:
-    """Normalise un lieu brut vers une ville valide du wizard ('carthage' ou 'la_marsa')."""
-    if not raw:
-        return None
-    return _CITY_ALIASES.get(raw.strip().lower())
-
-
-def start_wizard(session_id: str, signaux: dict | None = None) -> WizardSession:
-    
+def start_wizard(session_id: str) -> WizardSession:
     """Appelé depuis orchestrateur.py une fois que le LLM a détecté
-    l'intention "je veux un circuit" depuis IDLE.
-
-    Si signaux contient un 'lieu' valide, pré-remplit la ville et saute
-    directement à PLACE_SELECTION. Sinon, débute en CITY_SELECTION.
+    l'intention "je veux un circuit" depuis IDLE. Le wizard commence par
+    l'étape profil; la zone reste fixée à Carthage à la génération.
     """
-    wizard = WizardSession(session_id=session_id, state=WizardState.CITY_SELECTION)
-
-    if signaux:
-        lieu_brut = signaux.get("lieu")
-        if lieu_brut:
-            ville = _normalize_city(lieu_brut)
-            if ville:
-                wizard.city = ville
-                wizard.state = WizardState.PLACE_SELECTION
-
-    return wizard
+    return WizardSession(session_id=session_id, state=WizardState.CUSTOMIZATION_BUDGET)
 
 
 def reset_wizard(session_id: str) -> WizardSession:
@@ -400,12 +409,11 @@ def reset_wizard(session_id: str) -> WizardSession:
 # modèle de FALLBACK_MESSAGES dans constants.py.
 
 _QUESTIONS_FR: dict[WizardState, str] = {
-    WizardState.CITY_SELECTION: "Quelle ville souhaitez-vous visiter ?",
     WizardState.PLACE_SELECTION: "Quels lieux voulez-vous absolument visiter ?",
     WizardState.CUSTOMIZATION_BUDGET: "Quel est votre budget ?",
     WizardState.CUSTOMIZATION_MOBILITY: "Comment souhaitez-vous vous déplacer ?",
+    WizardState.CUSTOMIZATION_TIME: "Quelle durée et quel créneau horaire souhaitez-vous ?",
     WizardState.CUSTOMIZATION_PREFERENCES: "Quelles époques et types de sites vous intéressent ?",
-    WizardState.CUSTOMIZATION_DATES: "Quand souhaitez-vous faire cette visite, et à quelle heure ?",
     WizardState.CIRCUIT_GENERATION: "Je génère votre circuit, un instant...",
     WizardState.CIRCUIT_REVIEW: "Voici votre circuit proposé.",
     WizardState.CIRCUIT_ADJUSTMENT: "Que souhaitez-vous ajuster ?",

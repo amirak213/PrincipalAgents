@@ -35,7 +35,11 @@ def filter_monuments(
                 )
             else:
                 continue
-        if node.price > context.budget_max and monument_id not in context.required_ids:
+        if (
+            node.price is not None
+            and node.price > context.budget_max
+            and monument_id not in context.required_ids
+        ):
             continue
         candidates[monument_id] = node
 

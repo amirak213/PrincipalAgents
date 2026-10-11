@@ -7,10 +7,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 class CircuitPreferences(BaseModel):
-    epoques: list[str] = Field(default_factory=list)
-    fonctions: list[str] = Field(default_factory=list)
-    must_visit: list[str] = Field(default_factory=list)
-    avoid: list[str] = Field(default_factory=list)
+    epoques: list[str]
+    fonctions: list[str]
+    must_visit: list[str]
+    avoid: list[str]
 
 
 class CircuitRecommendationRequest(BaseModel):
@@ -26,12 +26,12 @@ class CircuitRecommendationRequest(BaseModel):
     ]
     budget_max: float = Field(..., gt=0)
     transport: Literal["walking", "bike", "car", "public_transport", "pied", "velo", "voiture"]
-    mobilite: Literal["normale", "reduite", "limitee", "full", "reduced", "limited"] = "normale"
+    mobilite: Literal["normale", "reduite", "limitee", "full", "reduced", "limited"]
     duration_minutes: int | None = Field(None, ge=15, le=720)
     start_time: str | None = None
     end_time: str | None = None
-    zone: str = "Carthage"
-    preferences: CircuitPreferences = Field(default_factory=CircuitPreferences)
+    zone: str
+    preferences: CircuitPreferences
     start_location: str | None = None
     end_location: str | None = None
     max_stops: int = Field(12, ge=2, le=20)
@@ -57,7 +57,7 @@ class RecommendedMonument(BaseModel):
     latitude: float
     longitude: float
     visit_duration_min: float
-    price: float
+    price: float | None
     arrival_time: str | None = None
     departure_time: str | None = None
     reason: str
@@ -72,6 +72,8 @@ class CircuitSummary(BaseModel):
     total_duration_min: float
     total_distance_km: float
     total_price: float
+    unknown_price_count: int = 0
+    budget_max: float | None = None
     score: float
 
 

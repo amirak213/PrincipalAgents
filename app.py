@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import os
 
 sys.path.insert(
@@ -14,7 +14,7 @@ from slowapi.util import get_remote_address
 from pydantic import BaseModel, Field
 import uuid
 from AgentPrincipal.chat import chat
-from typing import Optional, List, Any
+from typing import TYPE_CHECKING, Optional, List, Any
 from langdetect import detect_langs, DetectorFactory
 from deep_translator import GoogleTranslator
 from AgentPrincipal.geo_service import get_geo_service
@@ -46,6 +46,12 @@ from AgentPrincipal.redis_client import get_redis, close_redis
 
 _circuit_v2_mods = _load_circuit_v2_modules()
 CircuitRecommendationResponse = _circuit_v2_mods["CircuitRecommendationResponse"]
+if TYPE_CHECKING:
+    from AgentHistorique.backend.app.schemas.circuit_agent import (
+        CircuitRecommendationRequest as CircuitRecommendRequest,
+    )
+else:
+    CircuitRecommendRequest = _circuit_v2_mods["CircuitRecommendationRequest"]
 limiter = Limiter(key_func=get_remote_address)
 # Set seed for consistent language detection
 DetectorFactory.seed = 0
@@ -248,7 +254,7 @@ class WizardCircuitStop(BaseModel):
     order: int
     name: str
     visit_duration_min: int
-    price: float
+    price: Optional[float] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
 
@@ -259,13 +265,15 @@ class WizardCircuitSummary(BaseModel):
     monuments: List[WizardCircuitStop] = Field(default_factory=list)
     total_duration_min: float
     total_price: float
+    budget_max: Optional[float] = None
+    unknown_price_count: int = 0
     route: Optional[dict] = None
 
 
 class WizardUI(BaseModel):
     state: str
     question: str
-    input_type: str  # "single_select" | "multi_select" | "budget_form" | "date_form" | "confirm"
+    input_type: str  # "single_select" | "multi_select" | "budget_form" | "mobility_form" | "time_form" | "preferences_form" | "confirm"
     options: List[WizardOption] = Field(default_factory=list)
     has_more: bool = False  # utilisé par place_selection pour signaler "voir plus"
     budget_ok: Optional[bool] = None  # renseigné uniquement pour CIRCUIT_REVIEW
@@ -287,62 +295,11 @@ class ChatResponse(BaseModel):
     packs: Optional[List[PackCard]] = None
 
 
-# --- Modèles de Requête / Réponse Circuits ---
-class CircuitPreferences(BaseModel):
-    epoques: List[str]
-    fonctions: List[str]
-    must_visit: List[str]
-    avoid: List[str]
-
-
-class CircuitRecommendRequest(BaseModel):
-    session_id: str
-    age: Optional[int] = None
-    type_tarif: str
-    budget_max: float
-    transport: str
-    mobilite: str
-    duration_minutes: Optional[int] = None
-    start_time: Optional[str] = None
-    end_time: Optional[str] = None
-    zone: str
-    preferences: CircuitPreferences
-    start_location: Optional[str] = None
-    end_location: Optional[str] = None
-    max_stops: Optional[int] = None
-
-
 @app.post("/api/circuits/recommend", response_model=CircuitRecommendationResponse)
 @limiter.limit("20/minute")
 async def recommend_circuit_endpoint(request: Request, req: CircuitRecommendRequest):
-    mods = _load_circuit_v2_modules()
-    NewRequest = mods["CircuitRecommendationRequest"]
-    NewPreferences = mods["CircuitPreferences"]
-
-    new_req = NewRequest(
-        session_id=req.session_id,
-        age=req.age,
-        type_tarif=req.type_tarif,
-        budget_max=req.budget_max,
-        transport=req.transport,
-        mobilite=req.mobilite,
-        duration_minutes=req.duration_minutes,
-        start_time=req.start_time,
-        end_time=req.end_time,
-        zone=req.zone,
-        preferences=NewPreferences(
-            epoques=req.preferences.epoques,
-            fonctions=req.preferences.fonctions,
-            must_visit=req.preferences.must_visit,
-            avoid=req.preferences.avoid,
-        ),
-        start_location=req.start_location,
-        end_location=req.end_location,
-        max_stops=req.max_stops if req.max_stops is not None else 12,
-    )
-
     try:
-        result = await asyncio.to_thread(_run_circuit_recommendation_sync, new_req)
+        result = await asyncio.to_thread(_run_circuit_recommendation_sync, req)
     except CircuitRecommendationBusinessError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return result.response
@@ -387,7 +344,7 @@ session_announced: dict[str, set] = {}
 
 
 def _get_sorted_monument_options(
-    offset: int = 0, limit: int = 5, city: Optional[str] = None
+    offset: int = 0, limit: int = 5
 ) -> tuple[List[WizardOption], bool]:
     """Retourne les monuments triés par priorité décroissante, paginés."""
     mods = _load_circuit_v2_modules()
@@ -397,12 +354,6 @@ def _get_sorted_monument_options(
     db = SessionLocal()
     try:
         query = db.query(Monument)
-        if city:
-            city_key = str(city).strip().lower()
-            if city_key == "la_marsa":
-                query = query.filter(Monument.name_fr.ilike("%marsa%"))
-            # "carthage" et tout autre valeur : pas de filtre (comportement identique à _matches_city)
-
         monuments = query.order_by(Monument.priority.desc().nullslast()).all()
     finally:
         db.close()
@@ -437,17 +388,6 @@ def _build_wizard_ui(wizard) -> Optional[WizardUI]:
 
     question = question_for_state(state, lang="FR")
 
-    if state == WizardState.CITY_SELECTION:
-        return WizardUI(
-            state=state_value,
-            question=question,
-            input_type="single_select",
-            options=[
-                WizardOption(value="carthage", label="Carthage"),
-                WizardOption(value="la_marsa", label="La Marsa"),
-            ],
-        )
-
     if state == WizardState.GUIDE_MODE_READY:
         return WizardUI(
             state=state_value,
@@ -467,7 +407,7 @@ def _build_wizard_ui(wizard) -> Optional[WizardUI]:
             options=[
                 WizardOption(value="budget", label="Ajuster le budget"),
                 WizardOption(value="mobility", label="Ajuster le mode de déplacement"),
-                WizardOption(value="dates", label="Ajuster les dates"),
+                WizardOption(value="time", label="Ajuster la durée et les horaires"),
                 WizardOption(value="places", label="Ajuster les lieux"),
             ],
         )
@@ -476,7 +416,6 @@ def _build_wizard_ui(wizard) -> Optional[WizardUI]:
         options, has_more = _get_sorted_monument_options(
             offset=wizard.places_offset if getattr(wizard, "places_offset", 0) else 0,
             limit=5,
-            city=wizard.city,
         )
         return WizardUI(
             state=state_value,
@@ -505,11 +444,15 @@ def _build_wizard_ui(wizard) -> Optional[WizardUI]:
         return WizardUI(
             state=state_value,
             question=question,
-            input_type="single_select",
+            input_type="mobility_form",
             options=[
-                WizardOption(value="walking", label="À pied"),
-                WizardOption(value="car", label="En voiture"),
-                WizardOption(value="bike", label="À vélo"),
+                WizardOption(value="walking", label="À pied", meta={"type": "transport"}),
+                WizardOption(value="bike", label="Vélo", meta={"type": "transport"}),
+                WizardOption(value="car", label="Voiture", meta={"type": "transport"}),
+                WizardOption(value="public_transport", label="Transport public", meta={"type": "transport"}),
+                WizardOption(value="normale", label="Normale", meta={"type": "mobilite"}),
+                WizardOption(value="reduite", label="Réduite", meta={"type": "mobilite"}),
+                WizardOption(value="limitee", label="Limitée", meta={"type": "mobilite"}),
             ],
         )
 
@@ -519,27 +462,22 @@ def _build_wizard_ui(wizard) -> Optional[WizardUI]:
             question=question,
             input_type="preferences_form",
             options=[
-                WizardOption(value="Antiquité", label="Antiquité", meta={"type": "epoque"}),
-                WizardOption(value="Punique", label="Punique", meta={"type": "epoque"}),
                 WizardOption(value="Romaine", label="Romaine", meta={"type": "epoque"}),
+                WizardOption(value="Punique", label="Punique", meta={"type": "epoque"}),
                 WizardOption(value="Byzantine", label="Byzantine", meta={"type": "epoque"}),
-                WizardOption(value="Islamique", label="Islamique", meta={"type": "epoque"}),
-                WizardOption(value="Ottomane", label="Ottomane", meta={"type": "epoque"}),
-                WizardOption(value="Contemporaine", label="Contemporaine", meta={"type": "epoque"}),
-                WizardOption(value="Religieux", label="Religieux", meta={"type": "fonction"}),
-                WizardOption(value="Militaire", label="Militaire", meta={"type": "fonction"}),
-                WizardOption(value="Civil", label="Civil", meta={"type": "fonction"}),
-                WizardOption(value="Funéraire", label="Funéraire", meta={"type": "fonction"}),
-                WizardOption(value="Culturel", label="Culturel", meta={"type": "fonction"}),
-                WizardOption(value="Public", label="Public", meta={"type": "fonction"}),
+                WizardOption(value="Coloniale", label="Coloniale", meta={"type": "epoque"}),
+                WizardOption(value="musee", label="Musée", meta={"type": "fonction"}),
+                WizardOption(value="religieux", label="Religieux", meta={"type": "fonction"}),
+                WizardOption(value="culturel", label="Culturel", meta={"type": "fonction"}),
+                WizardOption(value="habitation", label="Habitation", meta={"type": "fonction"}),
             ],
         )
 
-    if state == WizardState.CUSTOMIZATION_DATES:
+    if state == WizardState.CUSTOMIZATION_TIME:
         return WizardUI(
             state=state_value,
             question=question,
-            input_type="date_form",
+            input_type="time_form",
             options=[],
         )
 
@@ -553,8 +491,8 @@ def _build_wizard_ui(wizard) -> Optional[WizardUI]:
         budget_warning = None
         if budget_ok is False:
             budget_warning = (
-                f"Ce circuit dépasse votre budget : "
-                f"{circuit_data.get('total_price', '?')} contre votre limite fixée."
+                f"Le coût estimé ({circuit_data.get('total_price', '?')} DT) dépasse "
+                f"votre budget maximal ({(wizard.budget or {}).get('amount', '?')} DT)."
             )
         circuit_summary = None
         if circuit_data:
@@ -574,6 +512,8 @@ def _build_wizard_ui(wizard) -> Optional[WizardUI]:
                 ],
                 total_duration_min=circuit_data.get("total_duration_min", 0),
                 total_price=circuit_data.get("total_price", 0.0),
+                budget_max=(wizard.budget or {}).get("amount"),
+                unknown_price_count=circuit_data.get("unknown_price_count", 0),
                 route=route_data,
             )
         return WizardUI(

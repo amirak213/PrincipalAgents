@@ -678,6 +678,16 @@
   background: transparent;
 }
 
+.app-shell--chat-embed {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-shell--chat-embed .historical-chat-docked-header {
+  display: none;
+}
+
 .historical-chat-docked .chat-monument-context {
   margin-bottom: var(--space-2);
 }

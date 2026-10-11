@@ -1,6 +1,7 @@
 import { useState } from "react";
 import ChatLauncher from "./components/ChatLauncher";
 import HistoricalChat from "./components/chat/HistoricalChat";
+import EmbedBridge from "./embed/EmbedBridge";
 import Footer from "./components/layout/Footer";
 import Navbar from "./components/layout/Navbar";
 import PageContainer from "./components/layout/PageContainer";
@@ -22,6 +23,7 @@ function AppContent() {
     openGuideWithQuestion,
     pushHistoricalContext,
     setSelectedMonument,
+    activeCircuit,
   } = useWorkspace();
   const { monuments } = useMonuments();
   const {
@@ -68,6 +70,29 @@ function AppContent() {
   }
 
   const isExplorer = activeView === "explorer";
+  const isChatEmbed =
+    new URLSearchParams(window.location.search).get("embed") === "chat";
+
+  if (isChatEmbed) {
+    return (
+      <div className="app-shell app-shell--chat-embed">
+        <HistoricalChat
+          variant="docked"
+          chat={activeChat}
+          chats={chats}
+          activeChatId={activeChatId}
+          onClose={handleCloseChat}
+          onNewChat={startNewChat}
+          onSelectChat={selectChat}
+          onDeleteChat={deleteChat}
+          onEnsureChat={ensureActiveChat}
+          onAppendMessage={appendMessage}
+          onSourcesReceived={handleSourcesReceived}
+        />
+        <EmbedBridge mapOpen={Boolean(activeCircuit)} />
+      </div>
+    );
+  }
 
   return (
     <div className={`app-shell${isExplorer ? " app-shell-explorer" : ""}`}>

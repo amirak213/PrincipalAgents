@@ -10,7 +10,7 @@ interface BudgetFormProps {
 }
 
 export default function BudgetForm({ options, interactive, onSubmit }: BudgetFormProps) {
-  const [type, setType] = useState<string | null>(options[0]?.value ?? null);
+  const [type, setType] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
 
   const amountNumber = Number(amount);
@@ -40,15 +40,15 @@ export default function BudgetForm({ options, interactive, onSubmit }: BudgetFor
           min={1}
           inputMode="decimal"
           className="wizard-input"
-          placeholder="Budget en DT"
+          placeholder="Budget par personne (DT)"
           value={amount}
           disabled={!interactive}
           onChange={(event) => setAmount(event.target.value)}
-          aria-label="Montant du budget en dinars"
+          aria-label="Budget par personne en dinars"
         />
         {interactive && (
           <Button variant="primary" compact onClick={handleSubmit} disabled={!canSubmit}>
-            Valider
+            Continuer
           </Button>
         )}
       </div>

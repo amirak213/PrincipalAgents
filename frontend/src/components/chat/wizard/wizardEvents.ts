@@ -7,12 +7,11 @@ import type { WizardAction } from "../../../types";
  * que d'une entrée fixe ici — voir buildWizardAction.
  */
 const STATE_ACTION_TYPE: Record<string, string> = {
-  CITY_SELECTION: "select_city",
   PLACE_SELECTION: "select_places",
   CUSTOMIZATION_BUDGET: "set_budget",
   CUSTOMIZATION_MOBILITY: "set_mobility",
+  CUSTOMIZATION_TIME: "set_time",
   CUSTOMIZATION_PREFERENCES: "set_preferences",
-  CUSTOMIZATION_DATES: "set_dates",
   CIRCUIT_ADJUSTMENT: "adjust_circuit",
   GUIDE_MODE_READY: "confirm_guide_mode",
 };

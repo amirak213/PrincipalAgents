@@ -194,7 +194,11 @@ class GeneticOptimizer:
             penalty += 1000.0
 
         visit_minutes = sum(self._candidates[mid].visit_duration_min for mid in chromosome)
-        visit_cost = sum(self._candidates[mid].price for mid in chromosome)
+        visit_cost = sum(
+            price
+            for mid in chromosome
+            if (price := self._candidates[mid].price) is not None
+        )
         travel_distance, travel_minutes, used_fallback = self._router.route_metrics(chromosome)
         if travel_minutes == math.inf:
             return -1e9, False

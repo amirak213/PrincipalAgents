@@ -51,6 +51,8 @@ def _priority_score(node: MonumentNode) -> float:
 def _budget_compatibility(node: MonumentNode, budget_max: float) -> float:
     if budget_max <= 0:
         return 0.0
+    if node.price is None:
+        return 0.5
     if node.price <= budget_max:
         return 1.0
     return _clamp01(budget_max / max(node.price, 1e-6))

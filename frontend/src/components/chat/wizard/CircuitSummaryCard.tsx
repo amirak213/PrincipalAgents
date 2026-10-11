@@ -15,14 +15,19 @@ export default function CircuitSummaryCard({ circuit }: CircuitSummaryCardProps)
             <span className="wizard-circuit-stop-order">{stop.order}</span>
             <span className="wizard-circuit-stop-name">{stop.name}</span>
             <span className="wizard-circuit-stop-meta">
-              {stop.visit_duration_min} min · {stop.price} DT
+              {stop.visit_duration_min} min · {stop.price == null ? "Tarif non renseigné" : `${stop.price} DT`}
             </span>
           </li>
         ))}
       </ol>
       <p className="wizard-circuit-totals">
-        Total : {circuit.total_duration_min} min · {circuit.total_price} DT
+        Durée : {circuit.total_duration_min} min
+        {circuit.budget_max != null && <> · Budget : {circuit.budget_max} DT</>}
+        {' '}· Coût estimé : {circuit.total_price} DT
       </p>
+      {circuit.unknown_price_count > 0 && (
+        <p>+ {circuit.unknown_price_count} tarif(s) non renseigné(s)</p>
+      )}
     </div>
   );
 }

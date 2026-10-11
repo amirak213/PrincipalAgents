@@ -124,7 +124,7 @@ export default function CircuitRouteLayer({
             <br />
             Visite : {Math.round(monument.visit_duration_min)} min
             <br />
-            Prix : {monument.price.toFixed(0)} TND
+            Prix : {monument.price == null ? "non renseigné" : `${monument.price.toFixed(0)} TND`}
             {monument.arrival_time && monument.departure_time && (
               <>
                 <br />

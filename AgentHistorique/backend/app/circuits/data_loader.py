@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import re
 import unicodedata
@@ -12,6 +13,8 @@ from sqlalchemy.orm import Session
 from app.models.monument import Monument
 from app.models.reference_circuit import ReferenceCircuit
 from app.services.distance_service import build_distance_lookup
+
+logger = logging.getLogger(__name__)
 
 TARIFF_COLUMN_MAP: dict[str, str] = {
     "resident": "price_resident",
@@ -32,11 +35,11 @@ def normalize_name(value: str | None) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def get_monument_price(monument: Monument, tariff_type: str) -> float:
+def get_monument_price(monument: Monument, tariff_type: str) -> float | None:
     column = TARIFF_COLUMN_MAP.get(tariff_type, "price_resident")
     value = getattr(monument, column, None)
     if value is None:
-        return 0.0
+        return None
     return float(value)
 
 
@@ -48,7 +51,7 @@ class MonumentNode:
     longitude: float
     visit_duration_min: float
     priority: float
-    price: float
+    price: float | None
     dominant_period: str | None
     secondary_period: str | None
     third_period: str | None
@@ -65,7 +68,7 @@ class MonumentNode:
         longitude: float,
         visit_duration_min: float,
         priority: float | None = None,
-        price: float,
+        price: float | None,
         dominant_period: str | None = None,
         secondary_period: str | None = None,
         third_period: str | None = None,
@@ -89,7 +92,7 @@ class MonumentNode:
         object.__setattr__(self, "relief", relief)
 
     @classmethod
-    def from_orm(cls, monument: Monument, *, price: float) -> MonumentNode:
+    def from_orm(cls, monument: Monument, *, price: float | None) -> MonumentNode:
         return cls(
             id=monument.id_str,
             name=monument.name_fr,
@@ -127,6 +130,12 @@ class CircuitDataLoader:
             if monument.latitude_float is None or monument.longitude_float is None:
                 continue
             price = get_monument_price(monument, tariff_type)
+            if price is None:
+                logger.warning(
+                    "Monument has missing %s tariff: %s",
+                    tariff_type,
+                    monument.name_fr,
+                )
             nodes[monument.id_str] = MonumentNode.from_orm(monument, price=price)
         return nodes
 

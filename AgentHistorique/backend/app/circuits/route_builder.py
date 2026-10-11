@@ -20,6 +20,7 @@ class BuiltRoute:
     total_duration_min: float
     total_distance_km: float
     total_price: float
+    unknown_price_count: int
     score: float
     constraints: dict[str, bool]
     explanation: list[str]
@@ -63,6 +64,7 @@ def build_route(
     total_travel = 0.0
     total_distance = 0.0
     total_price = 0.0
+    unknown_price_count = 0
 
     for order, monument_id in enumerate(chromosome, start=1):
         node = candidates[monument_id]
@@ -87,7 +89,10 @@ def build_route(
             }
         )
         total_visit += node.visit_duration_min
-        total_price += node.price
+        if node.price is None:
+            unknown_price_count += 1
+        else:
+            total_price += node.price
         current_time = departure_dt
 
     for i in range(len(chromosome) - 1):
@@ -144,6 +149,7 @@ def build_route(
         total_duration_min=round(total_duration, 1),
         total_distance_km=round(total_distance, 2),
         total_price=round(total_price, 2),
+        unknown_price_count=unknown_price_count,
         score=round(max(0.0, min(1.0, fitness_score)), 2),
         constraints=constraints,
         explanation=explanation,

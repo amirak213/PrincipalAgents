@@ -170,6 +170,8 @@ class CircuitAgent:
             total_duration_min=built.total_duration_min,
             total_distance_km=built.total_distance_km,
             total_price=built.total_price,
+            unknown_price_count=built.unknown_price_count,
+            budget_max=request.budget_max,
             score=built.score,
         )
 
@@ -242,5 +244,6 @@ class CircuitAgent:
             f"{len(built.monuments)} monuments, "
             f"{built.total_duration_min:.0f} min au total "
             f"({built.total_travel_duration_min:.0f} min de trajet), "
-            f"budget {built.total_price:.0f}/{request.budget_max:.0f} TND."
+            f"coût estimé {built.total_price:.0f} TND pour un budget maximal "
+            f"de {request.budget_max:.0f} TND."
         )

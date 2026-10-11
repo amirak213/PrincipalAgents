@@ -4,7 +4,8 @@ import { buildWizardAction } from "./wizardEvents";
 import SingleSelectCards from "./SingleSelectCards";
 import PlaceMultiSelect from "./PlaceMultiSelect";
 import BudgetForm from "./BudgetForm";
-import DateForm from "./DateForm";
+import MobilityForm from "./MobilityForm";
+import TimeForm from "./TimeForm";
 import PreferencesForm from "./PreferencesForm";
 import ConfirmCard from "./ConfirmCard";
 
@@ -67,8 +68,16 @@ export default function WizardRenderer({ wizard, interactive, onAnswer }: Wizard
         />
       )}
 
-      {wizard.input_type === "date_form" && (
-        <DateForm interactive={interactive} onSubmit={submitStructured} />
+      {wizard.input_type === "mobility_form" && (
+        <MobilityForm
+          options={wizard.options}
+          interactive={interactive}
+          onSubmit={submitStructured}
+        />
+      )}
+
+      {wizard.input_type === "time_form" && (
+        <TimeForm interactive={interactive} onSubmit={submitStructured} />
       )}
 
       {wizard.input_type === "preferences_form" && (

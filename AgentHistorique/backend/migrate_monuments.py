@@ -8,6 +8,7 @@ Mapping retenu :
     longitude    -> longitude
     popularite   -> priority   (échelle 1-5 du CSV, utilisée comme
                                  score de tri par _get_sorted_monument_options)
+    Tarif_*      -> price_*    (tarifs utilisés par CircuitAgent)
 
 Colonnes absentes du CSV (laissées à NULL) :
     name_en, name_ar, status, importance, accessibility
@@ -64,6 +65,36 @@ def build_rows(df: pd.DataFrame) -> list[dict]:
                 "priority": (
                     float(row["popularite"]) if pd.notna(row["popularite"]) else None
                 ),
+                "price_resident": (
+                    float(row["Tarif_resident"])
+                    if pd.notna(row["Tarif_resident"])
+                    else None
+                ),
+                "price_student": (
+                    float(row["Tarif_etudiant"])
+                    if pd.notna(row["Tarif_etudiant"])
+                    else None
+                ),
+                "price_foreign": (
+                    float(row["Tarif_etranger"])
+                    if pd.notna(row["Tarif_etranger"])
+                    else None
+                ),
+                "price_teacher": (
+                    float(row["Tarif_enseignant"])
+                    if pd.notna(row["Tarif_enseignant"])
+                    else None
+                ),
+                "price_senior": (
+                    float(row["Tarif_retraite"])
+                    if pd.notna(row["Tarif_retraite"])
+                    else None
+                ),
+                "price_child": (
+                    float(row["Tarif_enfant"])
+                    if pd.notna(row["Tarif_enfant"])
+                    else None
+                ),
             }
         )
     return rows
@@ -74,6 +105,11 @@ def main():
     parser.add_argument("--csv", default="monuments.csv")
     parser.add_argument(
         "--dry-run", action="store_true", help="Affiche sans écrire en base"
+    )
+    parser.add_argument(
+        "--update-existing-tariffs",
+        action="store_true",
+        help="Met à jour uniquement les tarifs des monuments déjà présents",
     )
     args = parser.parse_args()
 
@@ -94,6 +130,23 @@ def main():
 
     engine = create_engine(DB_URL)
     with engine.begin() as conn:
+        if args.update_existing_tariffs:
+            update_tariffs = text("""
+                UPDATE public.monuments
+                SET price_resident = :price_resident,
+                    price_student = :price_student,
+                    price_foreign = :price_foreign,
+                    price_teacher = :price_teacher,
+                    price_senior = :price_senior,
+                    price_child = :price_child
+                WHERE name_fr = :name_fr
+                """)
+            updated = sum(
+                conn.execute(update_tariffs, row).rowcount for row in rows
+            )
+            print(f"\n[ok] Tarifs mis à jour pour {updated}/{len(rows)} monuments.")
+            return
+
         existing = conn.execute(text("SELECT COUNT(*) FROM public.monuments")).scalar()
         if existing:
             print(
@@ -105,8 +158,16 @@ def main():
 
         conn.execute(
             text("""
-                INSERT INTO public.monuments (id, name_fr, latitude, longitude, priority)
-                VALUES (:id, :name_fr, :latitude, :longitude, :priority)
+                INSERT INTO public.monuments (
+                    id, name_fr, latitude, longitude, priority,
+                    price_resident, price_student, price_foreign,
+                    price_teacher, price_senior, price_child
+                )
+                VALUES (
+                    :id, :name_fr, :latitude, :longitude, :priority,
+                    :price_resident, :price_student, :price_foreign,
+                    :price_teacher, :price_senior, :price_child
+                )
                 """),
             rows,
         )

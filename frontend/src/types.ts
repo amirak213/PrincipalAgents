@@ -32,7 +32,8 @@ export type WizardInputType =
   | "single_select"
   | "multi_select"
   | "budget_form"
-  | "date_form"
+  | "mobility_form"
+  | "time_form"
   | "preferences_form"
   | "confirm";
 
@@ -46,7 +47,7 @@ export interface WizardCircuitStop {
   order: number;
   name: string;
   visit_duration_min: number;
-  price: number;
+  price: number | null;
   latitude?: number | null;
   longitude?: number | null;
 }
@@ -57,6 +58,8 @@ export interface WizardCircuitSummary {
   monuments: WizardCircuitStop[];
   total_duration_min: number;
   total_price: number;
+  budget_max?: number | null;
+  unknown_price_count: number;
   route?: MapRoutePayload;
 }
 
