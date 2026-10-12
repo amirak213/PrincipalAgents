@@ -124,4 +124,4 @@ def get_history(session_id: str, agent_type: str | None = None) -> list[dict]:
     ]
     
     
-print("DB_CONFIG =", DB_CONFIG)
+# (print du DB_CONFIG retire : il exposait le mot de passe dans les logs)

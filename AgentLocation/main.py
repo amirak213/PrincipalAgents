@@ -53,7 +53,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=settings.flask_port,
+        port=int(os.environ.get("PORT") or settings.flask_port),
         reload=False,
         log_level="info",
         workers=workers,

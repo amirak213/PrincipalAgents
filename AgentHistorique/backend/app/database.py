@@ -7,8 +7,16 @@ from app.config import get_settings
 
 settings = get_settings()
 
+
+def _engine_url(url: str) -> str:
+    """Render fournit postgres(ql)://... : on force le driver psycopg (v3) utilise en local."""
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
+
 engine = create_engine(
-    settings.database_url,
+    _engine_url(settings.database_url),
     pool_pre_ping=True,
     connect_args={
         "connect_timeout": int(settings.database_connect_timeout_seconds),

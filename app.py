@@ -1,4 +1,4 @@
-﻿import sys
+import sys
 import os
 
 sys.path.insert(
@@ -97,6 +97,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+from fastapi.responses import JSONResponse as _JSONResponse
+from sqlalchemy.exc import OperationalError as _SAOperationalError
+import psycopg2 as _psycopg2
+
+
+@app.exception_handler(_SAOperationalError)
+@app.exception_handler(_psycopg2.OperationalError)
+async def _database_unavailable_handler(request: Request, exc: Exception):
+    return _JSONResponse(
+        status_code=503,
+        content={"detail": "Base de données temporairement indisponible. Réessayez dans quelques instants."},
+        headers={"Retry-After": "5"},
+    )
+
 
 # Store session contexts
 sessions = {}
@@ -898,6 +913,47 @@ async def health_check():
     return {"status": "ok", "service": "Dourbia Chatbot API"}
 
 
+@app.get("/health/ready")
+async def health_ready():
+    """Readiness : Postgres (circuits + RAG historique) et Redis, timeouts courts."""
+    from fastapi.responses import JSONResponse
+
+    def _probe_pg(env_name: str) -> None:
+        import psycopg2
+
+        dsn = re.sub(
+            r"^postgres(?:ql)?(?:\+\w+)?://", "postgresql://", os.environ.get(env_name, "")
+        )
+        conn = psycopg2.connect(dsn, connect_timeout=3)
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+        finally:
+            conn.close()
+
+    checks: dict[str, str] = {}
+    for label, env_name in (
+        ("postgres_circuit", "CIRCUIT_DATABASE_URL"),
+        ("postgres_historical", "HISTORICAL_DATABASE_URL"),
+    ):
+        try:
+            await asyncio.wait_for(asyncio.to_thread(_probe_pg, env_name), timeout=5)
+            checks[label] = "ok"
+        except Exception as exc:
+            checks[label] = f"error: {type(exc).__name__}"
+    try:
+        r = await get_redis()
+        await asyncio.wait_for(r.ping(), timeout=3)
+        checks["redis"] = "ok"
+    except Exception as exc:
+        checks["redis"] = f"error: {type(exc).__name__}"
+    ready = all(v == "ok" for v in checks.values())
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={"status": "ready" if ready else "not_ready", "checks": checks},
+    )
+
+
 @app.get("/api/guide-status/{session_id}")
 @limiter.limit("30/minute")
 async def guide_status(request: Request, session_id: str):
@@ -930,4 +986,4 @@ async def wizard_options(
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8000")))
