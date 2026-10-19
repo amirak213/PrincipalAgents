@@ -1,180 +1,104 @@
-# Aziz — Plateforme IA Tourisme Tunisie (Monorepo)
+# PrincipalAgents : chatbot Dourbia
 
-Ce dépôt regroupe **4 sous-projets** développés au fil du temps dans le cadre du stage / startup
-"Tunisia Circuits & Experiences". Ils sont à des stades de maturité différents et ne sont
-**pas encore unifiés** (architectures et stacks différentes). Ce README donne une vue
-d'ensemble, le statut de chaque module, et comment les lancer.
+Chatbot multi-agents de tourisme pour la région de Carthage et La Marsa (Tunisie). Il génère un circuit de visite, puis un mode guide utilise la position GPS pour donner des informations sur le lieu où l'on se trouve.
 
----
+## Structure du dépôt
 
-## 📁 Structure du dépôt
+| Dossier | Rôle |
+|---|---|
+| `app.py` | API FastAPI principale (point d'entrée de production) |
+| `AgentPrincipal/` | Orchestrateur, wizard de circuit, mémoire de session, service de géolocalisation |
+| `AgentHistorique/` | Moteur de circuits (`backend/app`), données et scripts d'ingestion |
+| `AgentLocation/` | Agent de réservation de voitures (optionnel) |
+| `AgentMeteo/` | Agent météo (optionnel) |
+| `frontend/` | Interface React + Vite |
+| `securite/` | Garde-fous (entrées/sorties) |
+| `scripts/` | Scripts utilitaires (dont `smoke_render.ps1`) |
+| `tests/` | Tests du wizard |
 
-```
-claude/
-├── stage_AI_agentique--master/   (alias: claude/)  → Système legacy "v1" (scoring Python + Streamlit + chat Groq)
-├── dourbia_v10_final/            → Agent location de voitures "Yasmine" v10 (architecture agentique 2026)
-├── chatbot/                      → "Aziz" — chatbot multi-agents tourisme Tunisie (en développement actif)
-└── weather_agent_v4/             → Agent météo autonome (Observe-Plan-Act-Evaluate)
-```
+## Prérequis
 
----
+- Python et `pip`
+- Node.js (pour le frontend)
+- PostgreSQL et Redis (Redis est obligatoire : le wizard y stocke son état)
+- Docker Desktop (pour lancer PostgreSQL et Redis facilement)
+- Une clé Groq
 
-## 1. `stage_AI_agentique--master/` (aussi dupliqué dans `claude/`) — Système legacy
-
-**Statut : prototype / legacy, contient des bugs bloquants connus.**
-
-Système de recommandation de circuits touristiques basé sur :
-- Un moteur de scoring Python (`PertinenceCalculator.py`, `Agent_circuit.py`, `Agent_feedback.py`, `Agent_principal.py`, `Agent_profil.py`)
-- Une interface Streamlit (`Application_streamlit.py`) — **chemins Windows en dur, à corriger**
-- Un chatbot terminal (`chat.py`) connecté à PostgreSQL + Groq (LLaMA 3.3 70b)
-- Des scripts ETL (`Standarisation_Circuits.py`, `Standarisation_Clients.py`, `Circuit_optimizer.py` avec DEAP/algorithme génétique)
-
-**Problèmes connus (voir analyse détaillée)** :
-- `calculer_score_thematique` / `calculer_score_type` dans `PertinenceCalculator.py` retournent des scores **constants** (0.7/0.6), non discriminants.
-- Incohérence de schéma entre `_charger_depuis_dataframe` (clés `cout_*`) et `_charger_depuis_json` (clé `tarifs`).
-- Chemins absolus `C:\Users\anasd\...` dans `Application_streamlit.py`, `Matching_client_circuit.py`, `Standarisation_*.py`, `Circuit_optimizer.py`.
-
-**Lancer le chatbot terminal** :
-```bash
-cd stage_AI_agentique--master
-pip install -r requirements.txt
-export GROQ_API_KEY="gsk_..."
-python chat.py
-```
-
----
-
-## 2. `dourbia_v10_final/` — Agent location de voitures "Yasmine" v10
-
-**Statut : architecture agentique mature (2026), API FastAPI fonctionnelle.**
-
-Agent conversationnel pour une agence de location de voitures tunisienne, suivant un
-graphe d'états **GUARD → PLAN → EXECUTE → REFLECT → MEMORIZE → OBSERVE** :
-
-- `agents/` — boucle principale, planning (décomposition de tâches), reflection (Reflexion/Shinn 2023)
-- `core/` — config Pydantic, accès DB (asyncpg + pgvector), infra (pool, Redis, circuit breaker)
-- `guardrails/` — Llama Guard 3 + détection injection/Unicode
-- `memory/` — mémoire épisodique + procédurale (pgvector)
-- `observability/` — tracing structuré, LLM-as-judge, métriques Prometheus
-- `scheduler/` — tâches planifiées
-- `api/` — routes FastAPI
-
-**Prérequis** : Python 3.11+, PostgreSQL 14+ avec `pgvector`, Redis 7+, compte Groq.
-
-**Lancer** :
-```bash
-cd dourbia_v10_final
-pip install -r requirements.txt
-cp .env.example .env   # renseigner GROQ_API_KEY, DB, Redis
-docker compose up -d   # ou lancer postgres/redis manuellement
-python main.py
-```
-Voir `dourbia_v10_final/README.md` et `INSTALL.md` pour le détail complet.
-
----
-
-## 3. `chatbot/` — "Aziz", chatbot multi-agents tourisme Tunisie
-
-**Statut : en développement actif, architecture cible 4 couches.**
-
-Pipeline cible :
-1. **Détection langue** (FR/EN/AR/IT/DE)
-2. **Extraction de signaux** (regex, sans LLM) — `constants.py`
-3. **Classification d'intention** (LLM rapide — `llama-3.1-8b-instant`)
-4. **Routing** vers agents spécialisés via `ROUTING_TABLE` (HISTORIQUE, CIRCUIT, RESERVATION, PRATIQUE, SMALLTALK, FEEDBACK, METEO)
-5. **Exécution agents** : `agent_circuits_wrapper.py`, `agent_meteo_wrapper.py`, `agent_reservation_wrapper.py` (+ worker async)
-6. **Synthèse narrative finale** (LLM puissant — `llama-3.3-70b-versatile`)
-7. **Mise à jour mémoire de session** (`session_memory.py`)
-
-Modules clés : `orchestrateur.py` (cerveau central), `constants.py` (config + prompts),
-`onboarding.py`, `circuit_presentation.py`, `profil_synthetique.py`, `systeme_loader.py`.
-
-**Lancer** :
-```bash
-cd chatbot
-pip install -r requirements.txt   # voir requirements global à la racine
-export GROQ_API_KEY="gsk_..."
-python chat.py
-```
-
-> ⚠️ Ce module dépend en partie de PostgreSQL/pgvector (via `systeme_loader.py`) — vérifier `.env`.
-
----
-
-## 4. `weather_agent_v4/` — Agent météo autonome
-
-**Statut : agent autonome 2026 fonctionnel, avec API et tests.**
-
-Vrai agent au sens agentique : cycle **Observe → Plan → Act → Evaluate → Respond**
-(`core/agent.py`), avec :
-- `core/planner.py` — génération de plans d'exécution
-- `core/evaluator.py` — auto-évaluation de la réponse (LLM-as-judge)
-- `core/model_router.py` — routage modèle selon complexité
-- `tools/` — registre d'outils + exécuteur (appels API météo)
-- `memory/context.py` — mémoire contextuelle persistée (`weather_memory.json`)
-- `observability/tracer.py` — traces structurées
-- `api/app.py` — API FastAPI
-- `tests/test_agent.py` — tests unitaires
-
-**Lancer** :
-```bash
-cd weather_agent_v4
-pip install -r requirements.txt   # voir requirements global à la racine
-uvicorn api.app:app --reload
-# ou exécuter les tests :
-pytest tests/
-```
-
----
-
-## ⚙️ Installation rapide (tous modules)
-
-```bash
-python -m venv venv
-source venv/bin/activate   # ou venv\Scripts\activate sous Windows
-pip install -r requirements.txt
-```
-
-## Vérifier les tarifs des circuits
-
-Depuis PowerShell, avec `psql` installé et un accès à la base circuits :
+## Installation
 
 ```powershell
-.\scripts\check_circuit_tariffs.ps1
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Copy-Item .env.example .env
 ```
 
-Pour mettre à jour les tarifs des monuments déjà présents depuis le CSV, depuis la racine :
+La première installation est longue (torch). Au premier démarrage, le modèle d'embeddings MiniLM est téléchargé.
+
+Ouvre ensuite `.env` et renseigne les valeurs. Elles te sont transmises séparément : ne les mets jamais sur GitHub.
+
+## Variables d'environnement (noms seulement)
+
+La liste complète est dans `.env.example`. Les principales :
+
+| Variable | Usage |
+|---|---|
+| `GROQ_API_KEY_PRINCIPAL` | Clé Groq de l'orchestrateur |
+| `CIRCUIT_DATABASE_URL` | Base utilisée par le moteur de circuits |
+| `HISTORICAL_DATABASE_URL` | Base du RAG historique |
+| `DATABASE_URL` | Base de l'agent de réservation |
+| `DOURBIA_PG_HOST`, `DOURBIA_PG_PORT`, `DOURBIA_PG_DB`, `DOURBIA_PG_USER`, `DOURBIA_PG_PASSWORD` | Base utilisée pour la position et les infos sur les lieux |
+| `REDIS_URL` | Redis (état du wizard) |
+| `FRONTEND_ORIGINS` | Origines autorisées par CORS (par défaut : localhost uniquement) |
+| `RESERVATION_ENABLED` | `0` pour désactiver la réservation |
+
+## Bases de données
+
+Le moteur de circuits attend un schéma de `monuments` en colonnes anglaises (`id`, `name_fr`, `latitude`...), ainsi que les tables `monument_distances` et `reference_circuits`. Les extraits de données (dump) sont à demander séparément. `À COMPLÉTER` : procédure de restauration du dump.
+
+## Lancer en local
+
+PostgreSQL et Redis, via Docker :
 
 ```powershell
-python .\AgentHistorique\backend\migrate_monuments.py --csv .\AgentHistorique\backend\monuments.csv --update-existing-tariffs
+docker compose up -d
 ```
 
-Chaque sous-dossier a aussi son `.env` propre (clé Groq, identifiants PostgreSQL/Redis,
-chemins de fichiers). **Ne jamais committer les `.env` réels** — utiliser `.env.example`.
+API principale (port 8000) :
 
----
+```powershell
+uvicorn app:app --reload --port 8000
+```
 
-## 🔑 Variables d'environnement communes
+Frontend (le proxy Vite redirige `/api` vers le port 8000) :
 
-| Variable | Description | Utilisé par |
-|---|---|---|
-| `GROQ_API_KEY` | Clé API Groq (LLaMA 3.x) | tous les modules |
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | PostgreSQL | `stage_AI_agentique`, `dourbia_v10_final`, `chatbot` |
-| `REDIS_URL` | Redis | `dourbia_v10_final` |
-| `OPENROUTESERVICE_API_KEY` | Calcul d'itinéraires GPS | `chatbot` (calcul_trajets) |
+```powershell
+cd frontend
+npm install
+npm run dev
+```
 
----
+Alternative : `.\start.ps1` lance l'environnement local complet pour Windows. `À COMPLÉTER` : vérifier ce que le script démarre exactement.
 
-## 🗺️ Roadmap / Travaux en cours
+## Vérifier que ça marche
 
-- [ ] Unifier les schémas circuits/tarifs entre `PertinenceCalculator` (legacy) et `chatbot`.
-- [ ] Supprimer tous les chemins Windows absolus du module legacy.
-- [ ] Finaliser `Agent_profil.py` et son intégration dans `Agent_principal.py`.
-- [ ] Migrer le module legacy vers PostgreSQL/pgvector (actuellement JSON local).
-- [ ] Intégrer la couche de normalisation linguistique (NLLB-200) dans `chatbot/`.
+```powershell
+Invoke-RestMethod http://localhost:8000/health
+```
 
----
+`/health` répond sans dépendance. `/health/ready` vérifie en plus les bases et Redis.
 
-## 📄 Licence / Auteur
+## Tests
 
-Projet interne — Tunisia Circuits & Experiences. Usage privé / stage.
+```powershell
+python -m pytest -q tests
+```
+
+## Déploiement
+
+Le `Dockerfile` à la racine est la référence (démarre `uvicorn app:app`). Le déploiement sur Render est en cours de préparation. Pour le mode guide, le frontend doit être servi en HTTPS : les navigateurs bloquent la géolocalisation en HTTP.
+
+## Sécurité
+
+- Ne jamais committer de `.env` : il est ignoré par `.gitignore`.
+- Les valeurs des variables se transmettent hors GitHub.
