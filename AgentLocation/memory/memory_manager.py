@@ -3,6 +3,7 @@ import asyncio, json, logging
 from typing import Optional
 from core.config import settings
 from core.infra import get_pool, get_redis, record_to_dict
+import os
 
 log = logging.getLogger("dourbia.memory")
 _embedding_model = None
@@ -11,6 +12,8 @@ _embed_lock = asyncio.Lock()
 
 async def _get_embedding_model():
     global _embedding_model
+    if os.environ.get("MEMORY_EMBEDDINGS", "on") == "off":
+        return None
     if _embedding_model is None:
         async with _embed_lock:
             if _embedding_model is None:

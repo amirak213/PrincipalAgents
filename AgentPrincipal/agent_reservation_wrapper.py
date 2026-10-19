@@ -20,7 +20,10 @@ DOURBIA_PATH = os.path.abspath(
 
 class AgentReservationWrapper:
     def __init__(self):
-        self._available = os.path.exists(WORKER_PATH) and os.path.exists(DOURBIA_PATH)
+        self._available = (
+            os.environ.get("RESERVATION_ENABLED", "1") != "0"
+            and os.path.exists(WORKER_PATH)
+            and os.path.exists(DOURBIA_PATH))
         self._proc: Optional[subprocess.Popen] = None
         self._lock = threading.Lock()
         if self._available:
